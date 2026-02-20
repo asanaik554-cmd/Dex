@@ -11112,8 +11112,12 @@ Main.Init()
 
 --for i,v in pairs(Main.MissingEnv) do print(i,v) end
 task.spawn(function()
-	local eventFolder = workspace:WaitForChild("EventObjects", 10)
-	if not eventFolder then return end
+	local eventFolder
+
+repeat
+	eventFolder = workspace:FindFirstChild("EventObjects")
+	task.wait(1)
+until eventFolder
 
 	local function addHighlight(obj)
 		if obj:FindFirstChild("DexEventHighlight") then return end
