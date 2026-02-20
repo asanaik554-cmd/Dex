@@ -11281,63 +11281,88 @@ task.spawn(function()
 
 	local TAG_NAME = "DexNameTag"
 
-	local function createNameTag(character, player)
-		if player == LocalPlayer then return end
-		if character:FindFirstChild(TAG_NAME) then return end
+	-- Find the workspace object that represents a player
+	local function findCharacterModel(player)
+		for _, obj in ipairs(workspace:GetDescendants()) do
+			if obj.Name == player.Name and obj:IsA("Model") then
+				return obj
+			end
+		end
+	end
 
-		local head = character:FindFirstChild("Head")
-		if not head then return end
+	-- Find a part to attach the BillboardGui to
+	local function getAdornee(model)
+		return model:FindFirstChild("Head")
+			or model:FindFirstChild("HumanoidRootPart")
+			or model:FindFirstChildWhichIsA("BasePart")
+	end
+
+	local function applyNameTag(player)
+		if player == LocalPlayer then return end
+
+		local model = findCharacterModel(player)
+		if not model then return end
+
+		local adornee = getAdornee(model)
+		if not adornee then return end
+
+		if adornee:FindFirstChild(TAG_NAME) then return end
 
 		local gui = Instance.new("BillboardGui")
 		gui.Name = TAG_NAME
-		gui.Adornee = head
+		gui.Adornee = adornee
 		gui.AlwaysOnTop = true
-		gui.Size = UDim2.fromScale(4, 1)
-		gui.StudsOffset = Vector3.new(0, 2.5, 0)
+		gui.Size = UDim2.fromOffset(120, 30)
+		gui.StudsOffset = Vector3.new(0, 3, 0)
 		gui.MaxDistance = math.huge
-		gui.Parent = character
+		gui.Parent = adornee
 
 		local text = Instance.new("TextLabel")
 		text.BackgroundTransparency = 1
 		text.Size = UDim2.fromScale(1, 1)
 		text.Text = player.Name
+		text.Font = Enum.Font.GothamBold
+		text.TextScaled = true
 		text.TextColor3 = Color3.fromRGB(255, 255, 255)
 		text.TextStrokeTransparency = 0
-		text.TextScaled = true
-		text.Font = Enum.Font.GothamBold
 		text.Parent = gui
-
-		-- Distance-based scaling
-		RunService.RenderStepped:Connect(function()
-			if not character.Parent or not head.Parent then
-				gui:Destroy()
-				return
-			end
-
-			local distance = (Camera.CFrame.Position - head.Position).Magnitude
-
-			-- farther = bigger (clamped)
-			local scale = math.clamp(distance / 50, 1, 6)
-			gui.Size = UDim2.fromScale(4 * scale, 1.2 * scale)
-		end)
 	end
 
-	local function handlePlayer(player)
-		player.CharacterAdded:Connect(function(char)
-			task.wait(0.5)
-			createNameTag(char, player)
-		end)
-
-		if player.Character then
-			createNameTag(player.Character, player)
-		end
-	end
-
-	-- Existing players
+	-- Initial scan
 	for _, player in ipairs(Players:GetPlayers()) do
-		handlePlayer(player)
+		applyNameTag(player)
 	end
 
-	-- New players
-	Players.PlayerAdded:Connect(handlePlayer)
+	-- Re-scan when players join
+	Players.PlayerAdded:Connect(function(player)
+		task.wait(0.5)
+		applyNameTag(player)
+	end)
+
+	-- Re-scan when workspace changes (respawns, swaps, etc.)
+	workspace.DescendantAdded:Connect(function()
+		for _, player in ipairs(Players:GetPlayers()) do
+			applyNameTag(player)
+		end
+	end)
+
+	-- Distance-based scaling (ONE loop, safe)
+	RunService.RenderStepped:Connect(function()
+		for _, player in ipairs(Players:GetPlayers()) do
+			if player ~= LocalPlayer then
+				local model = findCharacterModel(player)
+				if model then
+					local adornee = getAdornee(model)
+					if adornee then
+						local gui = adornee:FindFirstChild(TAG_NAME)
+						if gui then
+							local dist = (Camera.CFrame.Position - adornee.Position).Magnitude
+							local scale = math.clamp(dist / 60, 1, 5)
+							gui.Size = UDim2.fromOffset(120 * scale, 30 * scale)
+						end
+					end
+				end
+			end
+		end
+	end)
 end)
