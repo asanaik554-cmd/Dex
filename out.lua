@@ -11112,12 +11112,21 @@ Main.Init()
 
 --for i,v in pairs(Main.MissingEnv) do print(i,v) end
 task.spawn(function()
+	-- Wait for Map to exist
+	local map
+
+	repeat
+		map = workspace:FindFirstChild("Map")
+		task.wait(1)
+	until map
+
+	-- Wait for EventObjects inside Map
 	local eventFolder
 
-repeat
-	eventFolder = workspace:FindFirstChild("EventObjects")
-	task.wait(1)
-until eventFolder
+	repeat
+		eventFolder = map:FindFirstChild("EventObjects")
+		task.wait(1)
+	until eventFolder
 
 	local function addHighlight(obj)
 		if obj:FindFirstChild("DexEventHighlight") then return end
