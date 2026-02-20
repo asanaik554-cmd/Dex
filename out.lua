@@ -11281,16 +11281,22 @@ task.spawn(function()
 
 	local TAG_NAME = "DexNameTag"
 
-	-- Find the workspace object that represents a player
-	local function findCharacterModel(player)
+	-- Cache: player -> model
+	local playerModels = {}
+
+	-- Find and cache character model
+	local function cachePlayerModel(player)
+		if player == LocalPlayer then return end
+
 		for _, obj in ipairs(workspace:GetDescendants()) do
-			if obj.Name == player.Name and obj:IsA("Model") then
-				return obj
+			if obj:IsA("Model") and obj.Name == player.Name then
+				playerModels[player] = obj
+				return
 			end
 		end
 	end
 
-	-- Find a part to attach the BillboardGui to
+	-- Find attach part
 	local function getAdornee(model)
 		return model:FindFirstChild("Head")
 			or model:FindFirstChild("HumanoidRootPart")
@@ -11300,13 +11306,11 @@ task.spawn(function()
 	local function applyNameTag(player)
 		if player == LocalPlayer then return end
 
-		local model = findCharacterModel(player)
-		if not model then return end
+		local model = playerModels[player]
+		if not model or not model.Parent then return end
 
 		local adornee = getAdornee(model)
-		if not adornee then return end
-
-		if adornee:FindFirstChild(TAG_NAME) then return end
+		if not adornee or adornee:FindFirstChild(TAG_NAME) then return end
 
 		local gui = Instance.new("BillboardGui")
 		gui.Name = TAG_NAME
@@ -11328,38 +11332,46 @@ task.spawn(function()
 		text.Parent = gui
 	end
 
-	-- Initial scan
+	-- Initial cache
+	for _, player in ipairs(Players:GetPlayers()) do
+		cachePlayerModel(player)
+	end
+
+	-- Player join
+	Players.PlayerAdded:Connect(function(player)
+		task.wait(0.5)
+		cachePlayerModel(player)
+	end)
+
+	-- Workspace changes (respawn, round reset)
+	workspace.DescendantAdded:Connect(function(obj)
+		if obj:IsA("Model") then
+			for _, player in ipairs(Players:GetPlayers()) do
+				if obj.Name == player.Name then
+					playerModels[player] = obj
+					task.wait()
+					applyNameTag(player)
+				end
+			end
+		end
+	end)
+
+	-- Apply name tags once cached
 	for _, player in ipairs(Players:GetPlayers()) do
 		applyNameTag(player)
 	end
 
-	-- Re-scan when players join
-	Players.PlayerAdded:Connect(function(player)
-		task.wait(0.5)
-		applyNameTag(player)
-	end)
-
-	-- Re-scan when workspace changes (respawns, swaps, etc.)
-	workspace.DescendantAdded:Connect(function()
-		for _, player in ipairs(Players:GetPlayers()) do
-			applyNameTag(player)
-		end
-	end)
-
-	-- Distance-based scaling (ONE loop, safe)
+	-- VERY light render loop (distance only)
 	RunService.RenderStepped:Connect(function()
-		for _, player in ipairs(Players:GetPlayers()) do
-			if player ~= LocalPlayer then
-				local model = findCharacterModel(player)
-				if model then
-					local adornee = getAdornee(model)
-					if adornee then
-						local gui = adornee:FindFirstChild(TAG_NAME)
-						if gui then
-							local dist = (Camera.CFrame.Position - adornee.Position).Magnitude
-							local scale = math.clamp(dist / 60, 1, 5)
-							gui.Size = UDim2.fromOffset(120 * scale, 30 * scale)
-						end
+		for player, model in pairs(playerModels) do
+			if model and model.Parent and player ~= LocalPlayer then
+				local adornee = getAdornee(model)
+				if adornee then
+					local gui = adornee:FindFirstChild(TAG_NAME)
+					if gui then
+						local dist = (Camera.CFrame.Position - adornee.Position).Magnitude
+						local scale = math.clamp(dist / 80, 1, 4)
+						gui.Size = UDim2.fromOffset(120 * scale, 30 * scale)
 					end
 				end
 			end
