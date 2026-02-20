@@ -11111,3 +11111,33 @@ end)()
 Main.Init()
 
 --for i,v in pairs(Main.MissingEnv) do print(i,v) end
+task.spawn(function()
+	local eventFolder = workspace:WaitForChild("EventObjects", 10)
+	if not eventFolder then return end
+
+	local function addHighlight(obj)
+		if obj:FindFirstChild("DexEventHighlight") then return end
+		if not (obj:IsA("Model") or obj:IsA("BasePart")) then return end
+
+		local h = Instance.new("Highlight")
+		h.Name = "DexEventHighlight"
+		h.Adornee = obj
+		h.FillColor = Color3.fromRGB(255, 0, 0)
+		h.OutlineColor = Color3.fromRGB(255, 255, 255)
+		h.FillTransparency = 0.45
+		h.OutlineTransparency = 0
+		h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		h.Parent = obj
+	end
+
+	-- Highlight existing objects
+	for _, obj in ipairs(eventFolder:GetChildren()) do
+		addHighlight(obj)
+	end
+
+	-- Highlight new objects
+	eventFolder.ChildAdded:Connect(function(obj)
+		task.wait()
+		addHighlight(obj)
+	end)
+end)
