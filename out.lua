@@ -11123,8 +11123,22 @@ local EventFolder = Map:WaitForChild("EventObjects")
 --// Highlight Utility
 local function createHighlight(parent, name, fillColor, fillTransparency)
 	if not parent then return end
-	if parent:FindFirstChild(name) then return end
 	if not (parent:IsA("Model") or parent:IsA("BasePart")) then return end
+
+	local existing = parent:FindFirstChild(name)
+	if existing and existing:IsA("Highlight") then
+		-- Make sure it stays configured correctly (self-heal if settings changed)
+		existing.Adornee = parent
+		existing.FillColor = fillColor
+		existing.OutlineColor = Color3.fromRGB(255, 255, 255)
+		existing.FillTransparency = fillTransparency
+		existing.OutlineTransparency = 0
+		existing.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		return existing
+	elseif existing then
+		-- Something else has the same name; don't fight it
+		return
+	end
 
 	local h = Instance.new("Highlight")
 	h.Name = name
@@ -11135,48 +11149,66 @@ local function createHighlight(parent, name, fillColor, fillTransparency)
 	h.OutlineTransparency = 0
 	h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 	h.Parent = parent
+	return h
+end
+
+--// Watch a parent and re-add highlight if removed
+local function ensureHighlightStays(parent, highlightName, fillColor, fillTransparency)
+	if not parent then return end
+
+	-- Add/repair now
+	createHighlight(parent, highlightName, fillColor, fillTransparency)
+
+	-- If the highlight is removed later, re-add it
+	parent.ChildRemoved:Connect(function(child)
+		if child.Name == highlightName then
+			-- If parent still exists, restore
+			if parent.Parent then
+				createHighlight(parent, highlightName, fillColor, fillTransparency)
+			end
+		end
+	end)
 end
 
 --// RED: Event Objects
 local function handleEventObject(obj)
-	createHighlight(obj, "DexEventHighlight", Color3.fromRGB(255, 0, 0), 0.45)
+	ensureHighlightStays(obj, "DexEventHighlight", Color3.fromRGB(255, 0, 0), 0.45)
 end
 
 for _, obj in ipairs(EventFolder:GetChildren()) do
 	handleEventObject(obj)
 end
-
 EventFolder.ChildAdded:Connect(handleEventObject)
 
 --// GREEN: Computers
 local function handleComputer(obj)
 	if obj.Name == "ComputerTable" then
-		createHighlight(obj, "DexComputerHighlight", Color3.fromRGB(0, 255, 0), 0.4)
+		ensureHighlightStays(obj, "DexComputerHighlight", Color3.fromRGB(0, 255, 0), 0.4)
 	end
 end
 
 --// YELLOW: Hatches
 local function handleHatch(obj)
 	if obj.Name == "Hatch" then
-		createHighlight(obj, "DexHatchHighlight", Color3.fromRGB(255, 255, 0), 0.4)
+		ensureHighlightStays(obj, "DexHatchHighlight", Color3.fromRGB(255, 255, 0), 0.4)
 	end
 end
 
---// Initial Scan
+--// Initial Scan (covers already-spawned ones)
 for _, obj in ipairs(Map:GetDescendants()) do
 	handleComputer(obj)
 	handleHatch(obj)
 end
 
---// Future Objects
+--// Future Objects (covers late spawns like Hatch)
 Map.DescendantAdded:Connect(function(obj)
 	handleComputer(obj)
 	handleHatch(obj)
 end)
 
---// BLUE: Other Players
+--// BLUE: Other Players (+ self-heal if highlight gets removed)
 local function highlightCharacter(character)
-	createHighlight(character, "DexPlayerHighlight", Color3.fromRGB(0, 170, 255), 0.35)
+	ensureHighlightStays(character, "DexPlayerHighlight", Color3.fromRGB(0, 170, 255), 0.35)
 end
 
 local function onPlayerAdded(player)
@@ -11192,5 +11224,4 @@ end
 for _, player in ipairs(Players:GetPlayers()) do
 	onPlayerAdded(player)
 end
-
 Players.PlayerAdded:Connect(onPlayerAdded)
