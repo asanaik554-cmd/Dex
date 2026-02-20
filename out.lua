@@ -11159,97 +11159,45 @@ task.spawn(function()
 	local Workspace = game:GetService("Workspace")
 	local LocalPlayer = Players.LocalPlayer
 
-	-- Utility
-	local function hasBeastWeld(obj)
-		return obj:FindFirstChild("BeastWeld", true) ~= nil
-	end
-
-	local function clearHighlight(obj)
-		for _, h in ipairs(obj:GetChildren()) do
-			if h:IsA("Highlight") and (h.Name == "DexPlayerHighlight" or h.Name == "DexBeastHighlight") then
-				h:Destroy()
-			end
-		end
-	end
-
-	local function applyHighlight(obj, color, name)
-		clearHighlight(obj)
-
+	local function applyBlueHighlight(obj)
+		if obj:FindFirstChild("DexPlayerHighlight") then return end
 		if not (obj:IsA("Model") or obj:IsA("BasePart")) then return end
 
 		local h = Instance.new("Highlight")
-		h.Name = name
+		h.Name = "DexPlayerHighlight"
 		h.Adornee = obj
-		h.FillColor = color
+		h.FillColor = Color3.fromRGB(0, 170, 255)
 		h.OutlineColor = Color3.fromRGB(255, 255, 255)
-		h.FillTransparency = 0.3
+		h.FillTransparency = 0.35
 		h.OutlineTransparency = 0
 		h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 		h.Parent = obj
 	end
 
-	-- Decide highlight type
-	local function updatePlayerObject(obj, player)
-		if player == LocalPlayer then
-			clearHighlight(obj)
-			return
-		end
+	local function scanForPlayer(player)
+		if player == LocalPlayer then return end
+		local name = player.Name
 
-		if hasBeastWeld(obj) then
-			applyHighlight(obj, Color3.fromRGB(170, 0, 255), "DexBeastHighlight")
-		else
-			applyHighlight(obj, Color3.fromRGB(0, 170, 255), "DexPlayerHighlight")
-		end
-	end
-
-	-- Scan workspace for a specific player
-	local function scanPlayer(player)
 		for _, obj in ipairs(Workspace:GetDescendants()) do
-			if obj.Name == player.Name then
-				updatePlayerObject(obj, player)
+			if obj.Name == name then
+				applyBlueHighlight(obj)
 			end
 		end
 	end
 
-	-- Initial scan
+	-- Existing players
 	for _, player in ipairs(Players:GetPlayers()) do
-		scanPlayer(player)
+		scanForPlayer(player)
 	end
 
-	-- Player joins
-	Players.PlayerAdded:Connect(scanPlayer)
+	-- New players
+	Players.PlayerAdded:Connect(scanForPlayer)
 
-	-- Workspace changes
+	-- New objects
 	Workspace.DescendantAdded:Connect(function(obj)
-		-- BeastWeld added later
-		if obj.Name == "BeastWeld" then
-			local parent = obj.Parent
-			while parent and parent ~= Workspace do
-				local player = Players:FindFirstChild(parent.Name)
-				if player then
-					updatePlayerObject(parent, player)
-					break
-				end
-				parent = parent.Parent
-			end
-		else
-			local player = Players:FindFirstChild(obj.Name)
-			if player then
-				updatePlayerObject(obj, player)
-			end
-		end
-	end)
-
-	-- Optional: re-check if BeastWeld removed
-	Workspace.DescendantRemoving:Connect(function(obj)
-		if obj.Name == "BeastWeld" then
-			local parent = obj.Parent
-			if parent then
-				local player = Players:FindFirstChild(parent.Name)
-				if player then
-					updatePlayerObject(parent, player)
-				end
-			end
+		local player = Players:FindFirstChild(obj.Name)
+		if player and player ~= LocalPlayer then
+			applyBlueHighlight(obj)
 		end
 	end)
 end)
