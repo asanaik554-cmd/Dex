@@ -11116,9 +11116,50 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 
---// Wait for Map & EventObjects (these stay, only contents change)
+--// Wait for Map & EventObjects
 local Map = Workspace:WaitForChild("Map")
 local EventFolder = Map:WaitForChild("EventObjects")
+
+--====================================================
+-- Small GUI Counter
+--====================================================
+local gui = Instance.new("ScreenGui")
+gui.Name = "EventObjectsCounterGui"
+gui.ResetOnSpawn = false
+gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local frame = Instance.new("Frame")
+frame.Position = UDim2.fromScale(0.02, 0.08)
+frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+frame.BackgroundTransparency = 0.25
+frame.BorderSizePixel = 0
+frame.AutomaticSize = Enum.AutomaticSize.XY
+frame.Parent = gui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 8)
+corner.Parent = frame
+
+local padding = Instance.new("UIPadding")
+padding.PaddingTop = UDim.new(0, 6)
+padding.PaddingBottom = UDim.new(0, 6)
+padding.PaddingLeft = UDim.new(0, 8)
+padding.PaddingRight = UDim.new(0, 8)
+padding.Parent = frame
+
+local label = Instance.new("TextLabel")
+label.AutomaticSize = Enum.AutomaticSize.XY
+label.BackgroundTransparency = 1
+label.Font = Enum.Font.GothamBold
+label.TextSize = 13
+label.TextColor3 = Color3.fromRGB(255, 255, 255)
+label.TextStrokeTransparency = 0.8
+label.TextXAlignment = Enum.TextXAlignment.Left
+label.Parent = frame
+
+local function updateCounter()
+	label.Text = "EventObjects: " .. tostring(#EventFolder:GetChildren())
+end
 
 --====================================================
 -- Highlight Utility
@@ -11127,7 +11168,6 @@ local function createHighlight(parent, name, fillColor, fillTransparency)
 	if not parent then return end
 	if not (parent:IsA("Model") or parent:IsA("BasePart")) then return end
 
-	-- If highlight exists, repair its settings (self-heal)
 	local existing = parent:FindFirstChild(name)
 	if existing and existing:IsA("Highlight") then
 		existing.Adornee = parent
@@ -11138,7 +11178,6 @@ local function createHighlight(parent, name, fillColor, fillTransparency)
 		existing.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 		return existing
 	elseif existing then
-		-- Something else with the same name exists; don't fight it
 		return
 	end
 
@@ -11154,14 +11193,11 @@ local function createHighlight(parent, name, fillColor, fillTransparency)
 	return h
 end
 
--- Re-add highlight if removed later from the same object
 local function ensureHighlightStays(parent, highlightName, fillColor, fillTransparency)
 	if not parent then return end
 
-	-- Add/repair now
 	createHighlight(parent, highlightName, fillColor, fillTransparency)
 
-	-- If highlight gets deleted, restore it
 	parent.ChildRemoved:Connect(function(child)
 		if child.Name == highlightName and parent.Parent then
 			createHighlight(parent, highlightName, fillColor, fillTransparency)
@@ -11170,34 +11206,35 @@ local function ensureHighlightStays(parent, highlightName, fillColor, fillTransp
 end
 
 --====================================================
--- RED: Event Objects (folder contents get cleared + repopulated)
+-- RED: Event Objects (repopulate safe)
 --====================================================
 local function handleEventObject(obj)
 	ensureHighlightStays(obj, "DexEventHighlight", Color3.fromRGB(255, 0, 0), 0.45)
 end
 
 local function rescanEventFolder()
-	-- Highlights anything currently present (covers repopulates)
 	for _, obj in ipairs(EventFolder:GetChildren()) do
 		handleEventObject(obj)
 	end
 end
 
--- Initial scan
 rescanEventFolder()
+updateCounter()
 
--- Normal spawns
-EventFolder.ChildAdded:Connect(handleEventObject)
+EventFolder.ChildAdded:Connect(function(obj)
+	handleEventObject(obj)
+	updateCounter()
+end)
 
--- Repopulate fix:
--- Many games clear the folder (ChildRemoved spam) then add new ones right after.
--- Defer a rescan so we catch the newly re-added instances.
 EventFolder.ChildRemoved:Connect(function()
-	task.defer(rescanEventFolder)
+	task.defer(function()
+		rescanEventFolder()
+		updateCounter()
+	end)
 end)
 
 --====================================================
--- GREEN: Computers (ensure highlight stays + detect spawns)
+-- GREEN: Computers
 --====================================================
 local function handleComputer(obj)
 	if obj.Name == "ComputerTable" then
@@ -11206,7 +11243,7 @@ local function handleComputer(obj)
 end
 
 --====================================================
--- YELLOW: Hatches (may spawn later)
+-- YELLOW: Hatches
 --====================================================
 local function handleHatch(obj)
 	if obj.Name == "Hatch" then
@@ -11214,20 +11251,20 @@ local function handleHatch(obj)
 	end
 end
 
--- Initial scan for computers/hatches that already exist
+-- Initial scan
 for _, obj in ipairs(Map:GetDescendants()) do
 	handleComputer(obj)
 	handleHatch(obj)
 end
 
--- Detect future spawns/replacements inside Map (covers Hatch not always spawning)
+-- Future spawns
 Map.DescendantAdded:Connect(function(obj)
 	handleComputer(obj)
 	handleHatch(obj)
 end)
 
 --====================================================
--- BLUE: Other Players (new joins + character respawns)
+-- BLUE: Other Players
 --====================================================
 local function highlightCharacter(character)
 	ensureHighlightStays(character, "DexPlayerHighlight", Color3.fromRGB(0, 170, 255), 0.35)
@@ -11235,16 +11272,12 @@ end
 
 local function onPlayerAdded(player)
 	if player == LocalPlayer then return end
-
-	if player.Character then
-		highlightCharacter(player.Character)
-	end
-
+	if player.Character then highlightCharacter(player.Character) end
 	player.CharacterAdded:Connect(highlightCharacter)
 end
 
-for _, player in ipairs(Players:GetPlayers()) do
-	onPlayerAdded(player)
+for _, p in ipairs(Players:GetPlayers()) do
+	onPlayerAdded(p)
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)
