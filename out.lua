@@ -11273,3 +11273,71 @@ task.spawn(function()
 		end
 	end)
 end)
+task.spawn(function()
+	local Players = game:GetService("Players")
+	local RunService = game:GetService("RunService")
+	local LocalPlayer = Players.LocalPlayer
+	local Camera = workspace.CurrentCamera
+
+	local TAG_NAME = "DexNameTag"
+
+	local function createNameTag(character, player)
+		if player == LocalPlayer then return end
+		if character:FindFirstChild(TAG_NAME) then return end
+
+		local head = character:FindFirstChild("Head")
+		if not head then return end
+
+		local gui = Instance.new("BillboardGui")
+		gui.Name = TAG_NAME
+		gui.Adornee = head
+		gui.AlwaysOnTop = true
+		gui.Size = UDim2.fromScale(4, 1)
+		gui.StudsOffset = Vector3.new(0, 2.5, 0)
+		gui.MaxDistance = math.huge
+		gui.Parent = character
+
+		local text = Instance.new("TextLabel")
+		text.BackgroundTransparency = 1
+		text.Size = UDim2.fromScale(1, 1)
+		text.Text = player.Name
+		text.TextColor3 = Color3.fromRGB(255, 255, 255)
+		text.TextStrokeTransparency = 0
+		text.TextScaled = true
+		text.Font = Enum.Font.GothamBold
+		text.Parent = gui
+
+		-- Distance-based scaling
+		RunService.RenderStepped:Connect(function()
+			if not character.Parent or not head.Parent then
+				gui:Destroy()
+				return
+			end
+
+			local distance = (Camera.CFrame.Position - head.Position).Magnitude
+
+			-- farther = bigger (clamped)
+			local scale = math.clamp(distance / 50, 1, 6)
+			gui.Size = UDim2.fromScale(4 * scale, 1.2 * scale)
+		end)
+	end
+
+	local function handlePlayer(player)
+		player.CharacterAdded:Connect(function(char)
+			task.wait(0.5)
+			createNameTag(char, player)
+		end)
+
+		if player.Character then
+			createNameTag(player.Character, player)
+		end
+	end
+
+	-- Existing players
+	for _, player in ipairs(Players:GetPlayers()) do
+		handlePlayer(player)
+	end
+
+	-- New players
+	Players.PlayerAdded:Connect(handlePlayer)
+end)
