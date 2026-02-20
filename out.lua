@@ -11201,3 +11201,39 @@ task.spawn(function()
 		end
 	end)
 end)
+task.spawn(function()
+	local workspace = game:GetService("Workspace")
+
+	-- Wait for Map
+	local map = workspace:WaitForChild("Map", 10)
+	if not map then return end
+
+	local function applyHighlight(obj)
+		if obj:FindFirstChild("DexComputerHighlight") then return end
+
+		local h = Instance.new("Highlight")
+		h.Name = "DexComputerHighlight"
+		h.Adornee = obj
+		h.FillColor = Color3.fromRGB(0, 255, 0) -- green
+		h.OutlineColor = Color3.fromRGB(255, 255, 255)
+		h.FillTransparency = 0.4
+		h.OutlineTransparency = 0
+		h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		h.Parent = obj
+	end
+
+	-- Highlight existing ComputerTable
+	for _, obj in ipairs(map:GetDescendants()) do
+		if obj.Name == "ComputerTable" then
+			applyHighlight(obj)
+		end
+	end
+
+	-- Highlight future ComputerTable objects
+	map.DescendantAdded:Connect(function(obj)
+		if obj.Name == "ComputerTable" then
+			task.wait()
+			applyHighlight(obj)
+		end
+	end)
+end)
