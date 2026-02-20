@@ -11111,165 +11111,86 @@ end)()
 Main.Init()
 
 --for i,v in pairs(Main.MissingEnv) do print(i,v) end
-task.spawn(function()
-	-- Wait for Map to exist
-	local map
+--// Services
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
 
-	repeat
-		map = workspace:FindFirstChild("Map")
-		task.wait(1)
-	until map
+--// Wait for Map & EventObjects
+local Map = Workspace:WaitForChild("Map")
+local EventFolder = Map:WaitForChild("EventObjects")
 
-	-- Wait for EventObjects inside Map
-	local eventFolder
+--// Highlight Utility
+local function createHighlight(parent, name, fillColor, fillTransparency)
+	if not parent then return end
+	if parent:FindFirstChild(name) then return end
+	if not (parent:IsA("Model") or parent:IsA("BasePart")) then return end
 
-	repeat
-		eventFolder = map:FindFirstChild("EventObjects")
-		task.wait(1)
-	until eventFolder
+	local h = Instance.new("Highlight")
+	h.Name = name
+	h.Adornee = parent
+	h.FillColor = fillColor
+	h.OutlineColor = Color3.fromRGB(255, 255, 255)
+	h.FillTransparency = fillTransparency
+	h.OutlineTransparency = 0
+	h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	h.Parent = parent
+end
 
-	local function addHighlight(obj)
-		if obj:FindFirstChild("DexEventHighlight") then return end
-		if not (obj:IsA("Model") or obj:IsA("BasePart")) then return end
+--// RED: Event Objects
+local function handleEventObject(obj)
+	createHighlight(obj, "DexEventHighlight", Color3.fromRGB(255, 0, 0), 0.45)
+end
 
-		local h = Instance.new("Highlight")
-		h.Name = "DexEventHighlight"
-		h.Adornee = obj
-		h.FillColor = Color3.fromRGB(255, 0, 0)
-		h.OutlineColor = Color3.fromRGB(255, 255, 255)
-		h.FillTransparency = 0.45
-		h.OutlineTransparency = 0
-		h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-		h.Parent = obj
+for _, obj in ipairs(EventFolder:GetChildren()) do
+	handleEventObject(obj)
+end
+
+EventFolder.ChildAdded:Connect(handleEventObject)
+
+--// GREEN: Computers
+local function handleComputer(obj)
+	if obj.Name == "ComputerTable" then
+		createHighlight(obj, "DexComputerHighlight", Color3.fromRGB(0, 255, 0), 0.4)
 	end
+end
 
-	-- Highlight existing objects
-	for _, obj in ipairs(eventFolder:GetChildren()) do
-		addHighlight(obj)
+--// YELLOW: Hatches
+local function handleHatch(obj)
+	if obj.Name == "Hatch" then
+		createHighlight(obj, "DexHatchHighlight", Color3.fromRGB(255, 255, 0), 0.4)
 	end
+end
 
-	-- Highlight new objects
-	eventFolder.ChildAdded:Connect(function(obj)
-		task.wait()
-		addHighlight(obj)
-	end)
+--// Initial Scan
+for _, obj in ipairs(Map:GetDescendants()) do
+	handleComputer(obj)
+	handleHatch(obj)
+end
+
+--// Future Objects
+Map.DescendantAdded:Connect(function(obj)
+	handleComputer(obj)
+	handleHatch(obj)
 end)
-task.spawn(function()
-	local Players = game:GetService("Players")
-	local Workspace = game:GetService("Workspace")
-	local LocalPlayer = Players.LocalPlayer
 
-	local function applyBlueHighlight(obj)
-		if obj:FindFirstChild("DexPlayerHighlight") then return end
-		if not (obj:IsA("Model") or obj:IsA("BasePart")) then return end
+--// BLUE: Other Players
+local function highlightCharacter(character)
+	createHighlight(character, "DexPlayerHighlight", Color3.fromRGB(0, 170, 255), 0.35)
+end
 
-		local h = Instance.new("Highlight")
-		h.Name = "DexPlayerHighlight"
-		h.Adornee = obj
-		h.FillColor = Color3.fromRGB(0, 170, 255)
-		h.OutlineColor = Color3.fromRGB(255, 255, 255)
-		h.FillTransparency = 0.35
-		h.OutlineTransparency = 0
-		h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-		h.Parent = obj
+local function onPlayerAdded(player)
+	if player == LocalPlayer then return end
+
+	if player.Character then
+		highlightCharacter(player.Character)
 	end
 
-	local function scanForPlayer(player)
-		if player == LocalPlayer then return end
-		local name = player.Name
+	player.CharacterAdded:Connect(highlightCharacter)
+end
 
-		for _, obj in ipairs(Workspace:GetDescendants()) do
-			if obj.Name == name then
-				applyBlueHighlight(obj)
-			end
-		end
-	end
+for _, player in ipairs(Players:GetPlayers()) do
+	onPlayerAdded(player)
+end
 
-	-- Existing players
-	for _, player in ipairs(Players:GetPlayers()) do
-		scanForPlayer(player)
-	end
-
-	-- New players
-	Players.PlayerAdded:Connect(scanForPlayer)
-
-	-- New objects
-	Workspace.DescendantAdded:Connect(function(obj)
-		local player = Players:FindFirstChild(obj.Name)
-		if player and player ~= LocalPlayer then
-			applyBlueHighlight(obj)
-		end
-	end)
-end)
-task.spawn(function()
-	local workspace = game:GetService("Workspace")
-
-	-- Wait for Map
-	local map = workspace:WaitForChild("Map", 10)
-	if not map then return end
-
-	local function applyHighlight(obj)
-		if obj:FindFirstChild("DexComputerHighlight") then return end
-
-		local h = Instance.new("Highlight")
-		h.Name = "DexComputerHighlight"
-		h.Adornee = obj
-		h.FillColor = Color3.fromRGB(0, 255, 0) -- green
-		h.OutlineColor = Color3.fromRGB(255, 255, 255)
-		h.FillTransparency = 0.4
-		h.OutlineTransparency = 0
-		h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-		h.Parent = obj
-	end
-
-	-- Highlight existing ComputerTable
-	for _, obj in ipairs(map:GetDescendants()) do
-		if obj.Name == "ComputerTable" then
-			applyHighlight(obj)
-		end
-	end
-
-	-- Highlight future ComputerTable objects
-	map.DescendantAdded:Connect(function(obj)
-		if obj.Name == "ComputerTable" then
-			task.wait()
-			applyHighlight(obj)
-		end
-	end)
-end)
-task.spawn(function()
-	local workspace = game:GetService("Workspace")
-
-	-- Wait for Map
-	local map = workspace:WaitForChild("Map", 10)
-	if not map then return end
-
-	local function applyHighlight(obj)
-		if obj:FindFirstChild("DexHatchHighlight") then return end
-
-		local h = Instance.new("Highlight")
-		h.Name = "DexHatchHighlight"
-		h.Adornee = obj
-		h.FillColor = Color3.fromRGB(255, 255, 0) -- yellow
-		h.OutlineColor = Color3.fromRGB(255, 255, 255)
-		h.FillTransparency = 0.4
-		h.OutlineTransparency = 0
-		h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-		h.Parent = obj
-	end
-
-	-- Existing Hatch objects
-	for _, obj in ipairs(map:GetDescendants()) do
-		if obj.Name == "Hatch" then
-			applyHighlight(obj)
-		end
-	end
-
-	-- Future Hatch objects
-	map.DescendantAdded:Connect(function(obj)
-		if obj.Name == "Hatch" then
-			task.wait()
-			applyHighlight(obj)
-		end
-	end)
-end)
+Players.PlayerAdded:Connect(onPlayerAdded)
