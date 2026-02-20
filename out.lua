@@ -11237,3 +11237,39 @@ task.spawn(function()
 		end
 	end)
 end)
+task.spawn(function()
+	local workspace = game:GetService("Workspace")
+
+	-- Wait for Map
+	local map = workspace:WaitForChild("Map", 10)
+	if not map then return end
+
+	local function applyHighlight(obj)
+		if obj:FindFirstChild("DexHatchHighlight") then return end
+
+		local h = Instance.new("Highlight")
+		h.Name = "DexHatchHighlight"
+		h.Adornee = obj
+		h.FillColor = Color3.fromRGB(255, 255, 0) -- yellow
+		h.OutlineColor = Color3.fromRGB(255, 255, 255)
+		h.FillTransparency = 0.4
+		h.OutlineTransparency = 0
+		h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		h.Parent = obj
+	end
+
+	-- Existing Hatch objects
+	for _, obj in ipairs(map:GetDescendants()) do
+		if obj.Name == "Hatch" then
+			applyHighlight(obj)
+		end
+	end
+
+	-- Future Hatch objects
+	map.DescendantAdded:Connect(function(obj)
+		if obj.Name == "Hatch" then
+			task.wait()
+			applyHighlight(obj)
+		end
+	end)
+end)
