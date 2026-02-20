@@ -11119,6 +11119,52 @@ local LocalPlayer = Players.LocalPlayer
 --// Wait for Map & EventObjects
 local Map = Workspace:WaitForChild("Map")
 local EventFolder = Map:WaitForChild("EventObjects")
+local gui = Instance.new("ScreenGui")
+gui.Name = "DexEventCounterGui"
+gui.ResetOnSpawn = false
+gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local frame = Instance.new("Frame")
+frame.Position = UDim2.fromScale(0.02, 0.08)
+frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+frame.BackgroundTransparency = 0.2
+frame.BorderSizePixel = 0
+frame.AutomaticSize = Enum.AutomaticSize.XY
+frame.Parent = gui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 10)
+corner.Parent = frame
+
+local padding = Instance.new("UIPadding")
+padding.PaddingTop = UDim.new(0, 8)
+padding.PaddingBottom = UDim.new(0, 8)
+padding.PaddingLeft = UDim.new(0, 10)
+padding.PaddingRight = UDim.new(0, 10)
+padding.Parent = frame
+
+local label = Instance.new("TextLabel")
+label.AutomaticSize = Enum.AutomaticSize.XY
+label.BackgroundTransparency = 1
+label.TextColor3 = Color3.fromRGB(255, 255, 255)
+label.TextStrokeTransparency = 0.7
+label.Font = Enum.Font.GothamBold
+label.TextSize = 14
+label.TextXAlignment = Enum.TextXAlignment.Left
+label.TextYAlignment = Enum.TextYAlignment.Center
+label.Parent = frame
+
+local function updateEventCount()
+	if EventFolder then
+		label.Text = "EventObjects: " .. #EventFolder:GetChildren()
+	else
+		label.Text = "EventObjects: 0"
+	end
+end
+
+updateEventCount()
+EventFolder.ChildAdded:Connect(updateEventCount)
+EventFolder.ChildRemoved:Connect(updateEventCount)
 
 --// Highlight Utility
 local function createHighlight(parent, name, fillColor, fillTransparency)
