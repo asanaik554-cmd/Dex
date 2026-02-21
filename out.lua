@@ -11243,14 +11243,16 @@ do
     -- =========================
     -- Players: always highlight
     -- =========================
+    -- FIX: Prefer player.Character first so we don't accidentally grab a non-character
+    -- instance in workspace that happens to share the player's name.
     local function getCharacterFromWorkspaceOrPlayer(player)
-        return workspace:FindFirstChild(player.Name) or player.Character
+        return player.Character or workspace:FindFirstChild(player.Name)
     end
 
     local function ensurePlayerHighlight(player)
         if not player or player == LOCAL_PLAYER then return end
         local char = getCharacterFromWorkspaceOrPlayer(player)
-        if not char then return end
+        if not char or not char.Parent then return end -- small safety for already-spawned / not yet parented
 
         applyHighlight(char, PLAYER_HIGHLIGHT_NAME, PLAYER_FILL_COLOR, PLAYER_OUTLINE_COLOR, PLAYER_FILL_TRANSPARENCY)
         hookReadd(char, PLAYER_HIGHLIGHT_NAME, PLAYER_FILL_COLOR, PLAYER_OUTLINE_COLOR, PLAYER_FILL_TRANSPARENCY)
