@@ -11133,15 +11133,15 @@ do
     local PLAYER_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
     local PLAYER_FILL_TRANSPARENCY = 0.25
 
-    -- Rescan interval for EventObjects/Hatch descendants (prevents missed instances)
+    -- Rescan interval for EventObjects/Hatch descendants (catches missed instances)
     local RESCAN_INTERVAL = 2.0 -- seconds (raise to 3-5 for lower CPU)
 
     -- =========================
     -- Internals
     -- =========================
-    local bound = setmetatable({}, { __mode = "k" })
     local readdHooked = setmetatable({}, { __mode = "k" })
     local folderBound = setmetatable({}, { __mode = "k" })
+    local mapWatcherBound = setmetatable({}, { __mode = "k" }) -- map -> true
 
     local function isHighlightable(inst)
         return inst and (inst:IsA("Model") or inst:IsA("BasePart"))
@@ -11220,22 +11220,60 @@ do
     end
 
     -- =========================
-    -- Map binds (rescan-safe)
+    -- Map binds (NOW watches for late-added EventObjects/Hatch)
     -- =========================
     local function bindMap(map)
         if not map then return end
 
-        local eventFolder = map:FindFirstChild("EventObjects")
-        if eventFolder then
-            bindDescendantsWithRescan(eventFolder, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
+        local function tryBindChildren()
+            local eventFolder = map:FindFirstChild("EventObjects")
+            if eventFolder then
+                bindDescendantsWithRescan(eventFolder, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
+            end
+
+            local hatch = map:FindFirstChild("Hatch")
+            if hatch then
+                applyHighlight(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+                hookReadd(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+                bindDescendantsWithRescan(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+            end
         end
 
-        local hatch = map:FindFirstChild("Hatch")
-        if hatch then
-            -- Highlight the hatch itself + rescan descendants
-            applyHighlight(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
-            hookReadd(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
-            bindDescendantsWithRescan(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+        -- Do an initial attempt (works if they already exist)
+        tryBindChildren()
+
+        -- IMPORTANT: watch map for late creation/reparenting of EventObjects/Hatch
+        if not mapWatcherBound[map] then
+            mapWatcherBound[map] = true
+
+            map.ChildAdded:Connect(function(child)
+                if child.Name == "EventObjects" then
+                    task.defer(function()
+                        bindDescendantsWithRescan(child, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
+                    end)
+                elseif child.Name == "Hatch" then
+                    task.defer(function()
+                        applyHighlight(child, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+                        hookReadd(child, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+                        bindDescendantsWithRescan(child, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+                    end)
+                end
+            end)
+
+            -- Some games don't add directly as children; they might be moved around under map later.
+            map.DescendantAdded:Connect(function(inst)
+                if inst.Name == "EventObjects" and not folderBound[inst] then
+                    task.defer(function()
+                        bindDescendantsWithRescan(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
+                    end)
+                elseif inst.Name == "Hatch" and not folderBound[inst] then
+                    task.defer(function()
+                        applyHighlight(inst, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+                        hookReadd(inst, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+                        bindDescendantsWithRescan(inst, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+                    end)
+                end
+            end)
         end
     end
 
