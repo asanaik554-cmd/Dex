@@ -11115,68 +11115,96 @@ Main.Init()
 do
     local HIGHLIGHT_NAME = "DexEventHighlight"
 
-    -- Highlight appearance
-    local FILL_COLOR = Color3.fromRGB(255, 0, 0)
-    local OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
-    local FILL_TRANSPARENCY = 0.45
+    -- Colors
+    local EVENT_FILL_COLOR = Color3.fromRGB(255, 0, 0)      -- Red for EventObjects
+    local EVENT_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
+    local EVENT_FILL_TRANSPARENCY = 0.45
+
+    local HATCH_FILL_COLOR = Color3.fromRGB(255, 255, 0)    -- Yellow for Hatch
+    local HATCH_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
+    local HATCH_FILL_TRANSPARENCY = 0.35
 
     local function isHighlightable(inst)
-        return inst:IsA("Model") or inst:IsA("BasePart")
+        return inst and (inst:IsA("Model") or inst:IsA("BasePart"))
     end
 
-    local function ensureHighlight(inst)
+    local function applyHighlight(inst, fillColor, outlineColor, fillTransparency)
         if not isHighlightable(inst) then return end
 
         local h = inst:FindFirstChild(HIGHLIGHT_NAME)
         if h and h:IsA("Highlight") then
-            -- enforce style in case something changed it
             h.Adornee = inst
-            h.FillColor = FILL_COLOR
-            h.OutlineColor = OUTLINE_COLOR
-            h.FillTransparency = FILL_TRANSPARENCY
+            h.FillColor = fillColor
+            h.OutlineColor = outlineColor
+            h.FillTransparency = fillTransparency
             return
         end
 
         h = Instance.new("Highlight")
         h.Name = HIGHLIGHT_NAME
         h.Adornee = inst
-        h.FillColor = FILL_COLOR
-        h.OutlineColor = OUTLINE_COLOR
-        h.FillTransparency = FILL_TRANSPARENCY
+        h.FillColor = fillColor
+        h.OutlineColor = outlineColor
+        h.FillTransparency = fillTransparency
         h.Parent = inst
     end
 
-    local function hookReadd(inst)
+    local function hookReadd(inst, fillColor, outlineColor, fillTransparency)
+        if not isHighlightable(inst) then return end
         inst.ChildRemoved:Connect(function(child)
             if child:IsA("Highlight") and child.Name == HIGHLIGHT_NAME then
                 task.defer(function()
                     if inst.Parent then
-                        ensureHighlight(inst)
+                        applyHighlight(inst, fillColor, outlineColor, fillTransparency)
                     end
                 end)
             end
         end)
     end
 
-    local boundFolders = setmetatable({}, { __mode = "k" })
+    local bound = setmetatable({}, { __mode = "k" })
 
-    local function bindEventObjects(folder)
-        if boundFolders[folder] then return end
-        boundFolders[folder] = true
+    local function bindEventObjects(eventFolder)
+        if not eventFolder or bound[eventFolder] then return end
+        bound[eventFolder] = true
 
-        -- Existing descendants (nested stuff included)
-        for _, inst in ipairs(folder:GetDescendants()) do
+        for _, inst in ipairs(eventFolder:GetDescendants()) do
             if isHighlightable(inst) then
-                ensureHighlight(inst)
-                hookReadd(inst)
+                applyHighlight(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
+                hookReadd(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
             end
         end
 
-        -- New descendants
-        folder.DescendantAdded:Connect(function(inst)
+        eventFolder.DescendantAdded:Connect(function(inst)
             if isHighlightable(inst) then
-                ensureHighlight(inst)
-                hookReadd(inst)
+                applyHighlight(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
+                hookReadd(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
+            end
+        end)
+    end
+
+    local function bindHatch(map)
+        if not map then return end
+        local hatch = map:FindFirstChild("Hatch")
+        if not hatch or bound[hatch] then return end
+        bound[hatch] = true
+
+        -- Hatch itself
+        applyHighlight(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+        hookReadd(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+
+        -- If Hatch has parts inside, highlight them too (optional; remove if unwanted)
+        for _, inst in ipairs(hatch:GetDescendants()) do
+            if isHighlightable(inst) then
+                applyHighlight(inst, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+                hookReadd(inst, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+            end
+        end
+
+        hatch.DescendantAdded:Connect(function(inst)
+            if isHighlightable(inst) then
+                applyHighlight(inst, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+                hookReadd(inst, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
             end
         end)
     end
@@ -11186,22 +11214,21 @@ do
         if not map then return end
 
         local eventFolder = map:FindFirstChild("EventObjects")
-        if not eventFolder then return end
+        if eventFolder then
+            bindEventObjects(eventFolder)
+        end
 
-        bindEventObjects(eventFolder)
+        bindHatch(map)
     end
 
-    -- Initial bind
     tryBind()
 
-    -- If Map gets replaced, rebind
     workspace.ChildAdded:Connect(function(child)
         if child.Name == "Map" then
             task.defer(tryBind)
         end
     end)
 
-    -- Safety loop for map reloads / late spawns
     task.spawn(function()
         while true do
             tryBind()
