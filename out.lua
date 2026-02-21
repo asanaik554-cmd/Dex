@@ -11114,7 +11114,7 @@ Main.Init()
 --// Services
 do
     local Players = game:GetService("Players")
-    local Teams = game:GetService("Teams")
+    local Teams = game:GetService("Teams") -- (kept in case you use later)
 
     local LOCAL_PLAYER = Players.LocalPlayer
     local HIGHLIGHT_NAME = "DexEventHighlight"
@@ -11136,9 +11136,6 @@ do
     local COMPUTER_FILL_COLOR = Color3.fromRGB(0, 255, 0)   -- Green
     local COMPUTER_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
     local COMPUTER_FILL_TRANSPARENCY = 0.25
-
-    -- How to decide "in lobby":
-    local LOBBY_TEAM_NAME = "Lobby"
 
     local function isHighlightable(inst)
         return inst and (inst:IsA("Model") or inst:IsA("BasePart"))
@@ -11166,8 +11163,14 @@ do
         return h
     end
 
+    -- Prevent duplicate ChildRemoved hooks
+    local hooked = setmetatable({}, { __mode = "k" })
+
     local function hookReadd(inst, fillColor, outlineColor, fillTransparency)
         if not isHighlightable(inst) then return end
+        if hooked[inst] then return end
+        hooked[inst] = true
+
         inst.ChildRemoved:Connect(function(child)
             if child:IsA("Highlight") and child.Name == HIGHLIGHT_NAME then
                 task.defer(function()
@@ -11179,7 +11182,7 @@ do
         end)
     end
 
-    -- Track what we've already bound to (weak keys so GC can clean up)
+    -- Track what we've already bound to (weak keys)
     local bound = setmetatable({}, { __mode = "k" })
 
     -- ===== EventObjects (red) =====
@@ -11228,18 +11231,16 @@ do
     end
 
     -- ===== ComputerTable (green) =====
-    local computerBound = setmetatable({}, { __mode = "k" }) -- bind per-map once
+    local computerMapConnected = setmetatable({}, { __mode = "k" })
 
     local function applyComputerHighlightTree(root)
         if not root then return end
 
-        -- If the ComputerTable itself is a Model/BasePart, highlight it
         if isHighlightable(root) then
             applyHighlight(root, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
             hookReadd(root, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
         end
 
-        -- Always highlight highlightable descendants too (covers Folder / nested parts)
         for _, d in ipairs(root:GetDescendants()) do
             if isHighlightable(d) then
                 applyHighlight(d, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
@@ -11248,18 +11249,25 @@ do
         end
     end
 
-    local function bindComputerTables(map)
-        if not map or computerBound[map] then return end
-        computerBound[map] = true
-
-        -- Existing ComputerTables
+    local function scanComputerTables(map)
+        if not map then return end
         for _, inst in ipairs(map:GetDescendants()) do
             if inst.Name == "ComputerTable" then
                 applyComputerHighlightTree(inst)
             end
         end
+    end
 
-        -- Future ComputerTables
+    local function bindComputerTables(map)
+        if not map then return end
+
+        -- Always scan
+        scanComputerTables(map)
+
+        -- Only connect once per Map instance
+        if computerMapConnected[map] then return end
+        computerMapConnected[map] = true
+
         map.DescendantAdded:Connect(function(inst)
             if inst.Name == "ComputerTable" then
                 task.defer(function()
@@ -11269,16 +11277,7 @@ do
         end)
     end
 
-    -- ===== Players in Lobby (blue, excludes you) =====
-    local function isInLobby(player)
-        if not player then return false end
-        local lobbyTeam = Teams:FindFirstChild(LOBBY_TEAM_NAME)
-        if lobbyTeam then
-            return player.Team == lobbyTeam
-        end
-        return true
-    end
-
+    -- ===== Players (blue, excludes you) =====
     local function highlightCharacterModel(charModel)
         if not charModel or bound[charModel] then return end
         bound[charModel] = true
@@ -11291,7 +11290,6 @@ do
         if not player or player == LOCAL_PLAYER then return end
 
         local function tryApply()
-            if not isInLobby(player) then return end
             local char = workspace:FindFirstChild(player.Name)
             if not char and player.Character then char = player.Character end
             if char then
@@ -11301,9 +11299,7 @@ do
 
         player.CharacterAdded:Connect(function(char)
             task.defer(function()
-                if isInLobby(player) then
-                    highlightCharacterModel(char)
-                end
+                highlightCharacterModel(char)
             end)
         end)
 
@@ -11322,9 +11318,9 @@ do
         end)
     end)
 
-    local function refreshLobbyHighlights()
+    local function refreshPlayerHighlights()
         for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LOCAL_PLAYER and isInLobby(p) then
+            if p ~= LOCAL_PLAYER then
                 local char = workspace:FindFirstChild(p.Name) or p.Character
                 if char then
                     highlightCharacterModel(char)
@@ -11350,13 +11346,14 @@ do
     -- Initial binds
     tryBindMapStuff()
     bindAllPlayers()
-    refreshLobbyHighlights()
+    refreshPlayerHighlights()
 
-    -- FIX: delayed re-scan for join-in-progress / streaming replication
+    -- Join-in-progress / streaming fix
     task.spawn(function()
         task.wait(2)
         tryBindMapStuff()
-        refreshLobbyHighlights()
+        bindAllPlayers()
+        refreshPlayerHighlights()
     end)
 
     -- Rebind if Map gets replaced
@@ -11366,11 +11363,11 @@ do
         end
     end)
 
-    -- Safety loop for late spawns / replacements / lobby changes
+    -- Safety loop for late spawns / replacements
     task.spawn(function()
         while true do
             tryBindMapStuff()
-            refreshLobbyHighlights()
+            refreshPlayerHighlights()
             task.wait(1)
         end
     end)
