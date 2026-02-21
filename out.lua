@@ -11162,7 +11162,6 @@ do
     end
 
     local function normalizeName(s)
-        -- case-insensitive + ignore spaces/tabs/newlines
         return (tostring(s):lower():gsub("%s+", ""))
     end
 
@@ -11232,7 +11231,7 @@ do
     end
 
     -- =========================
-    -- Map binds
+    -- Map binds (kept simple / known-good)
     -- =========================
     local function tryBindMapStuff()
         local map = workspace:FindFirstChild("Map")
@@ -11251,8 +11250,6 @@ do
             end
             bindDescendants(hatch, HATCH_HIGHLIGHT_NAME, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
         end
-
-        -- ComputerTables: we don’t bind here anymore; the rescan loop handles ALL reliably.
     end
 
     -- =========================
@@ -11357,44 +11354,27 @@ do
 
     -- =========================
     -- ComputerTable rescan every 2 seconds (ALL under Map named ComputerTable)
-    -- Robust matching + highlights nearest highlightable ancestor + its descendants
+    -- IMPORTANT: NO ancestor climbing (prevents breaking Hatch/Players)
     -- =========================
     task.spawn(function()
-        local TARGET = "computertable" -- normalized target name
-
-        local function nearestHighlightableAncestor(inst)
-            local cur = inst
-            while cur and cur ~= workspace do
-                if isHighlightable(cur) then
-                    return cur
-                end
-                cur = cur.Parent
-            end
-            return nil
-        end
+        local TARGET = "computertable"
 
         while true do
             local map = workspace:FindFirstChild("Map")
             if map then
-                local roots = {} -- [Instance] = true (dedupe)
+                local seen = {} -- dedupe exact matches
                 for _, inst in ipairs(map:GetDescendants()) do
-                    if normalizeName(inst.Name) == TARGET then
-                        local root = nearestHighlightableAncestor(inst) or inst
-                        if root then
-                            roots[root] = true
-                        end
-                    end
-                end
+                    if normalizeName(inst.Name) == TARGET and not seen[inst] then
+                        seen[inst] = true
 
-                for root, _ in pairs(roots) do
-                    if root.Parent then
-                        -- highlight the root
-                        if isHighlightable(root) then
-                            applyHighlight(root, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
-                            hookReadd(root, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+                        -- Highlight the ComputerTable instance if possible
+                        if isHighlightable(inst) then
+                            applyHighlight(inst, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+                            hookReadd(inst, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
                         end
-                        -- highlight everything inside the root
-                        for _, d in ipairs(root:GetDescendants()) do
+
+                        -- Always highlight its contents (works even if inst is a Folder)
+                        for _, d in ipairs(inst:GetDescendants()) do
                             if isHighlightable(d) then
                                 applyHighlight(d, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
                                 hookReadd(d, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
