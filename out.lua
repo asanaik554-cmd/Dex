@@ -11161,6 +11161,11 @@ do
         return inst and (inst:IsA("Model") or inst:IsA("BasePart"))
     end
 
+    local function normalizeName(s)
+        -- case-insensitive + ignore spaces/tabs/newlines
+        return (tostring(s):lower():gsub("%s+", ""))
+    end
+
     local function getOrCreateHighlight(inst, highlightName)
         local h = inst:FindFirstChild(highlightName)
         if h and h:IsA("Highlight") then
@@ -11240,25 +11245,18 @@ do
 
         local hatch = map:FindFirstChild("Hatch")
         if hatch then
-            applyHighlight(hatch, HATCH_HIGHLIGHT_NAME, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
-            hookReadd(hatch, HATCH_HIGHLIGHT_NAME, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+            if isHighlightable(hatch) then
+                applyHighlight(hatch, HATCH_HIGHLIGHT_NAME, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+                hookReadd(hatch, HATCH_HIGHLIGHT_NAME, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+            end
             bindDescendants(hatch, HATCH_HIGHLIGHT_NAME, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
         end
 
-        -- ComputerTable: find ALL by name under Map (not just one)
-        for _, obj in ipairs(map:GetDescendants()) do
-            if obj.Name == "ComputerTable" then
-                if isHighlightable(obj) then
-                    applyHighlight(obj, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
-                    hookReadd(obj, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
-                end
-                bindDescendants(obj, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
-            end
-        end
+        -- ComputerTables: we don’t bind here anymore; the rescan loop handles ALL reliably.
     end
 
     -- =========================
-    -- Players
+    -- Players: always highlight
     -- =========================
     local function getCharacterFromWorkspaceOrPlayer(player)
         return workspace:FindFirstChild(player.Name) or player.Character
@@ -11358,23 +11356,48 @@ do
     end)
 
     -- =========================
-    -- ComputerTable rescan every 2 seconds (ALL by name)
+    -- ComputerTable rescan every 2 seconds (ALL under Map named ComputerTable)
+    -- Robust matching + highlights nearest highlightable ancestor + its descendants
     -- =========================
     task.spawn(function()
+        local TARGET = "computertable" -- normalized target name
+
+        local function nearestHighlightableAncestor(inst)
+            local cur = inst
+            while cur and cur ~= workspace do
+                if isHighlightable(cur) then
+                    return cur
+                end
+                cur = cur.Parent
+            end
+            return nil
+        end
+
         while true do
             local map = workspace:FindFirstChild("Map")
             if map then
-                for _, obj in ipairs(map:GetDescendants()) do
-                    if obj.Name == "ComputerTable" then
-                        if isHighlightable(obj) then
-                            applyHighlight(obj, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
-                            hookReadd(obj, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+                local roots = {} -- [Instance] = true (dedupe)
+                for _, inst in ipairs(map:GetDescendants()) do
+                    if normalizeName(inst.Name) == TARGET then
+                        local root = nearestHighlightableAncestor(inst) or inst
+                        if root then
+                            roots[root] = true
                         end
+                    end
+                end
 
-                        for _, inst in ipairs(obj:GetDescendants()) do
-                            if isHighlightable(inst) then
-                                applyHighlight(inst, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
-                                hookReadd(inst, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+                for root, _ in pairs(roots) do
+                    if root.Parent then
+                        -- highlight the root
+                        if isHighlightable(root) then
+                            applyHighlight(root, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+                            hookReadd(root, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+                        end
+                        -- highlight everything inside the root
+                        for _, d in ipairs(root:GetDescendants()) do
+                            if isHighlightable(d) then
+                                applyHighlight(d, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+                                hookReadd(d, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
                             end
                         end
                     end
@@ -11406,6 +11429,7 @@ do
                     end
                 end
             end
+
             task.wait(HIGHLIGHT_ENFORCE_INTERVAL)
         end
     end)
