@@ -11120,21 +11120,21 @@ do
     local HIGHLIGHT_NAME = "DexEventHighlight"
 
     -- Colors / styles
-    local EVENT_FILL_COLOR = Color3.fromRGB(255, 0, 0)      -- Red
+    local EVENT_FILL_COLOR = Color3.fromRGB(255, 0, 0)
     local EVENT_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
     local EVENT_FILL_TRANSPARENCY = 0.45
 
-    local HATCH_FILL_COLOR = Color3.fromRGB(255, 255, 0)    -- Yellow
+    local HATCH_FILL_COLOR = Color3.fromRGB(255, 255, 0)
     local HATCH_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
     local HATCH_FILL_TRANSPARENCY = 0.35
 
-    local PLAYER_FILL_COLOR = Color3.fromRGB(0, 170, 255)   -- Blue
-    local PLAYER_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
-    local PLAYER_FILL_TRANSPARENCY = 0.25
-
-    local COMPUTER_FILL_COLOR = Color3.fromRGB(0, 255, 0)  -- Green
+    local COMPUTER_FILL_COLOR = Color3.fromRGB(0, 255, 0)
     local COMPUTER_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
     local COMPUTER_FILL_TRANSPARENCY = 0.3
+
+    local PLAYER_FILL_COLOR = Color3.fromRGB(0, 170, 255)
+    local PLAYER_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
+    local PLAYER_FILL_TRANSPARENCY = 0.25
 
     local LOBBY_TEAM_NAME = "Lobby" -- if exists, only highlight players on this team
 
@@ -11179,7 +11179,7 @@ do
 
     local bound = setmetatable({}, { __mode = "k" })
 
-    -- EventObjects (red)
+    -- ===== EventObjects (red) =====
     local function bindEventObjects(eventFolder)
         if not eventFolder or bound[eventFolder] then return end
         bound[eventFolder] = true
@@ -11199,15 +11199,17 @@ do
         end)
     end
 
-    -- Hatch (yellow)
+    -- ===== Hatch (yellow) =====
     local function bindHatch(map)
         if not map then return end
         local hatch = map:FindFirstChild("Hatch")
         if not hatch or bound[hatch] then return end
         bound[hatch] = true
 
-        applyHighlight(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
-        hookReadd(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+        if isHighlightable(hatch) then
+            applyHighlight(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+            hookReadd(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+        end
 
         for _, inst in ipairs(hatch:GetDescendants()) do
             if isHighlightable(inst) then
@@ -11224,15 +11226,29 @@ do
         end)
     end
 
-    -- ComputerTable (green)
+    -- ===== ComputerTable (green, robust find anywhere under Map) =====
+    local function findFirstDescendantNamed(root, targetName)
+        if not root then return nil end
+        if root.Name == targetName then return root end
+        for _, d in ipairs(root:GetDescendants()) do
+            if d.Name == targetName then
+                return d
+            end
+        end
+        return nil
+    end
+
     local function bindComputerTable(map)
         if not map then return end
-        local tableObj = map:FindFirstChild("ComputerTable")
+
+        local tableObj = map:FindFirstChild("ComputerTable") or findFirstDescendantNamed(map, "ComputerTable")
         if not tableObj or bound[tableObj] then return end
         bound[tableObj] = true
 
-        applyHighlight(tableObj, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
-        hookReadd(tableObj, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+        if isHighlightable(tableObj) then
+            applyHighlight(tableObj, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+            hookReadd(tableObj, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+        end
 
         for _, inst in ipairs(tableObj:GetDescendants()) do
             if isHighlightable(inst) then
@@ -11249,7 +11265,7 @@ do
         end)
     end
 
-    -- Lobby players (blue, excludes you)
+    -- ===== Lobby players (blue, excludes you) =====
     local function isInLobby(player)
         local lobbyTeam = Teams:FindFirstChild(LOBBY_TEAM_NAME)
         if lobbyTeam then
@@ -11291,10 +11307,9 @@ do
     for _, p in ipairs(Players:GetPlayers()) do
         bindPlayer(p)
     end
-
     Players.PlayerAdded:Connect(bindPlayer)
 
-    -- Map binding + reload safety
+    -- ===== Map binding + reload safety =====
     local function tryBindMapStuff()
         local map = workspace:FindFirstChild("Map")
         if not map then return end
