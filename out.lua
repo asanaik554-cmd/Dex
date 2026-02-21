@@ -11112,98 +11112,94 @@ Main.Init()
 
 --for i,v in pairs(Main.MissingEnv) do print(i,v) end
 --// Services
-local HIGHLIGHT_NAME = "DexEventHighlight"
+do
+    local HIGHLIGHT_NAME = "DexEventHighlight"
 
--- ✅ Put the names of the objects you want highlighted here
-local ALLOWED_NAMES = {
-	["Gem"] = true,
-	["KeyCard"] = true,
-	["Objective"] = true,
-}
+    -- ✅ Put ONLY the object names you want highlighted here:
+    local ALLOWED_NAMES = {
+        ["Gem"] = true,
+        ["KeyCard"] = true,
+        ["Objective"] = true,
+    }
 
--- Highlight style
-local FILL_COLOR = Color3.fromRGB(255, 0, 0)
-local OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
-local FILL_TRANSPARENCY = 0.45
+    -- Style
+    local FILL_COLOR = Color3.fromRGB(255, 0, 0)
+    local OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
+    local FILL_TRANSPARENCY = 0.45
 
-local function isHighlightable(inst)
-	return inst:IsA("Model") or inst:IsA("BasePart")
+    local function isHighlightable(inst)
+        return inst:IsA("Model") or inst:IsA("BasePart")
+    end
+
+    local function shouldHighlight(inst)
+        return isHighlightable(inst) and ALLOWED_NAMES[inst.Name] == true
+    end
+
+    local function ensureHighlight(inst)
+        if not shouldHighlight(inst) then return end
+
+        local h = inst:FindFirstChild(HIGHLIGHT_NAME)
+        if h and h:IsA("Highlight") then
+            -- enforce settings if it already exists
+            h.Adornee = inst
+            h.FillColor = FILL_COLOR
+            h.OutlineColor = OUTLINE_COLOR
+            h.FillTransparency = FILL_TRANSPARENCY
+            return
+        end
+
+        h = Instance.new("Highlight")
+        h.Name = HIGHLIGHT_NAME
+        h.Adornee = inst
+        h.FillColor = FILL_COLOR
+        h.OutlineColor = OUTLINE_COLOR
+        h.FillTransparency = FILL_TRANSPARENCY
+        h.Parent = inst
+    end
+
+    local function watchRemoval(inst)
+        -- If highlight gets deleted later, put it back
+        inst.ChildRemoved:Connect(function(child)
+            if child:IsA("Highlight") and child.Name == HIGHLIGHT_NAME then
+                task.defer(function()
+                    if inst.Parent then
+                        ensureHighlight(inst)
+                    end
+                end)
+            end
+        end)
+    end
+
+    local function bindFolder(eventFolder)
+        -- existing
+        for _, inst in ipairs(eventFolder:GetChildren()) do
+            ensureHighlight(inst)
+            watchRemoval(inst)
+        end
+
+        -- new additions
+        eventFolder.ChildAdded:Connect(function(inst)
+            ensureHighlight(inst)
+            watchRemoval(inst)
+        end)
+    end
+
+    task.spawn(function()
+        while true do
+            -- wait for workspace.Map
+            local map = workspace:FindFirstChild("Map")
+            while not map do task.wait(0.5); map = workspace:FindFirstChild("Map") end
+
+            -- wait for workspace.Map.EventObjects
+            local eventFolder = map:FindFirstChild("EventObjects")
+            while not eventFolder do task.wait(0.5); eventFolder = map:FindFirstChild("EventObjects") end
+
+            bindFolder(eventFolder)
+
+            -- if map/eventFolder gets replaced on map reload, rebind
+            while map.Parent == workspace and eventFolder.Parent == map do
+                task.wait(1)
+            end
+        end
+    end)
 end
-
-local function shouldHighlight(inst)
-	return isHighlightable(inst) and ALLOWED_NAMES[inst.Name] == true
-end
-
-local function ensureHighlight(inst)
-	if not shouldHighlight(inst) then return end
-
-	local h = inst:FindFirstChild(HIGHLIGHT_NAME)
-	if h and h:IsA("Highlight") then
-		-- Refresh / enforce style
-		h.Adornee = inst
-		h.FillColor = FILL_COLOR
-		h.OutlineColor = OUTLINE_COLOR
-		h.FillTransparency = FILL_TRANSPARENCY
-		return
-	end
-
-	h = Instance.new("Highlight")
-	h.Name = HIGHLIGHT_NAME
-	h.Adornee = inst
-	h.FillColor = FILL_COLOR
-	h.OutlineColor = OUTLINE_COLOR
-	h.FillTransparency = FILL_TRANSPARENCY
-	h.Parent = inst
-end
-
-local function watchForHighlightRemoval(inst)
-	-- If someone deletes the Highlight, re-add it
-	inst.ChildRemoved:Connect(function(child)
-		if child:IsA("Highlight") and child.Name == HIGHLIGHT_NAME then
-			task.defer(function()
-				if inst.Parent then
-					ensureHighlight(inst)
-				end
-			end)
-		end
-	end)
-end
-
-local function setupEventObjectsFolder(eventFolder)
-	-- Existing children
-	for _, inst in ipairs(eventFolder:GetChildren()) do
-		ensureHighlight(inst)
-		watchForHighlightRemoval(inst)
-	end
-
-	-- New children
-	eventFolder.ChildAdded:Connect(function(inst)
-		ensureHighlight(inst)
-		watchForHighlightRemoval(inst)
-	end)
-end
-
-task.spawn(function()
-	while true do
-		-- Wait for Map
-		local map = workspace:FindFirstChild("Map")
-		while not map do
-			task.wait(0.5)
-			map = workspace:FindFirstChild("Map")
-		end
-
-		-- Wait for EventObjects
-		local eventFolder = map:FindFirstChild("EventObjects")
-		while not eventFolder do
-			task.wait(0.5)
-			eventFolder = map:FindFirstChild("EventObjects")
-		end
-
-		setupEventObjectsFolder(eventFolder)
-
-		-- If Map gets replaced/removed (new map loads), loop and re-bind
-		while map.Parent == workspace and eventFolder.Parent == map do
-			task.wait(1)
-		end
-	end
-end)
