@@ -11114,12 +11114,13 @@ Main.Init()
 --// Services
 do
     local Players = game:GetService("Players")
-    local Teams = game:GetService("Teams") -- (kept in case you use later)
 
     local LOCAL_PLAYER = Players.LocalPlayer
     local HIGHLIGHT_NAME = "DexEventHighlight"
 
+    -- =========================
     -- Colors / styles
+    -- =========================
     local EVENT_FILL_COLOR = Color3.fromRGB(255, 0, 0)      -- Red
     local EVENT_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
     local EVENT_FILL_TRANSPARENCY = 0.45
@@ -11132,44 +11133,44 @@ do
     local PLAYER_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
     local PLAYER_FILL_TRANSPARENCY = 0.25
 
-    -- ComputerTable (green)
-    local COMPUTER_FILL_COLOR = Color3.fromRGB(0, 255, 0)   -- Green
-    local COMPUTER_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
-    local COMPUTER_FILL_TRANSPARENCY = 0.25
+    -- Rescan interval for EventObjects/Hatch descendants (prevents missed instances)
+    local RESCAN_INTERVAL = 2.0 -- seconds (raise to 3-5 for lower CPU)
+
+    -- =========================
+    -- Internals
+    -- =========================
+    local bound = setmetatable({}, { __mode = "k" })
+    local readdHooked = setmetatable({}, { __mode = "k" })
+    local folderBound = setmetatable({}, { __mode = "k" })
 
     local function isHighlightable(inst)
         return inst and (inst:IsA("Model") or inst:IsA("BasePart"))
     end
 
-    local function applyHighlight(inst, fillColor, outlineColor, fillTransparency)
-        if not isHighlightable(inst) then return end
-
+    local function getOrCreateHighlight(inst)
         local h = inst:FindFirstChild(HIGHLIGHT_NAME)
         if h and h:IsA("Highlight") then
-            h.Adornee = inst
-            h.FillColor = fillColor
-            h.OutlineColor = outlineColor
-            h.FillTransparency = fillTransparency
             return h
         end
-
         h = Instance.new("Highlight")
         h.Name = HIGHLIGHT_NAME
-        h.Adornee = inst
-        h.FillColor = fillColor
-        h.OutlineColor = outlineColor
-        h.FillTransparency = fillTransparency
         h.Parent = inst
         return h
     end
 
-    -- Prevent duplicate ChildRemoved hooks
-    local hooked = setmetatable({}, { __mode = "k" })
+    local function applyHighlight(inst, fillColor, outlineColor, fillTransparency)
+        if not isHighlightable(inst) then return end
+        local h = getOrCreateHighlight(inst)
+        h.Adornee = inst
+        h.FillColor = fillColor
+        h.OutlineColor = outlineColor
+        h.FillTransparency = fillTransparency
+        return h
+    end
 
     local function hookReadd(inst, fillColor, outlineColor, fillTransparency)
-        if not isHighlightable(inst) then return end
-        if hooked[inst] then return end
-        hooked[inst] = true
+        if not isHighlightable(inst) or readdHooked[inst] then return end
+        readdHooked[inst] = true
 
         inst.ChildRemoved:Connect(function(child)
             if child:IsA("Highlight") and child.Name == HIGHLIGHT_NAME then
@@ -11182,134 +11183,102 @@ do
         end)
     end
 
-    -- Track what we've already bound to (weak keys)
-    local bound = setmetatable({}, { __mode = "k" })
+    local function bindDescendantsWithRescan(root, fillColor, outlineColor, fillTransparency)
+        if not root or folderBound[root] then return end
+        folderBound[root] = true
 
-    -- ===== EventObjects (red) =====
-    local function bindEventObjects(eventFolder)
-        if not eventFolder or bound[eventFolder] then return end
-        bound[eventFolder] = true
-
-        for _, inst in ipairs(eventFolder:GetDescendants()) do
-            if isHighlightable(inst) then
-                applyHighlight(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
-                hookReadd(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
-            end
+        local function bindOne(inst)
+            if not isHighlightable(inst) then return end
+            applyHighlight(inst, fillColor, outlineColor, fillTransparency)
+            hookReadd(inst, fillColor, outlineColor, fillTransparency)
         end
 
-        eventFolder.DescendantAdded:Connect(function(inst)
-            if isHighlightable(inst) then
-                applyHighlight(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
-                hookReadd(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
+        -- Initial pass
+        for _, inst in ipairs(root:GetDescendants()) do
+            bindOne(inst)
+        end
+
+        -- Event-based pass
+        root.DescendantAdded:Connect(function(inst)
+            bindOne(inst)
+        end)
+
+        -- Periodic reconcile pass (catches missed/late/fast-reparented cases)
+        task.spawn(function()
+            while root.Parent do
+                for _, inst in ipairs(root:GetDescendants()) do
+                    if isHighlightable(inst) then
+                        local h = inst:FindFirstChild(HIGHLIGHT_NAME)
+                        if not (h and h:IsA("Highlight")) then
+                            bindOne(inst)
+                        end
+                    end
+                end
+                task.wait(RESCAN_INTERVAL)
             end
         end)
     end
 
-    -- ===== Hatch (yellow) =====
-    local function bindHatch(map)
+    -- =========================
+    -- Map binds (rescan-safe)
+    -- =========================
+    local function bindMap(map)
         if not map then return end
+
+        local eventFolder = map:FindFirstChild("EventObjects")
+        if eventFolder then
+            bindDescendantsWithRescan(eventFolder, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
+        end
+
         local hatch = map:FindFirstChild("Hatch")
-        if not hatch or bound[hatch] then return end
-        bound[hatch] = true
-
-        applyHighlight(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
-        hookReadd(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
-
-        for _, inst in ipairs(hatch:GetDescendants()) do
-            if isHighlightable(inst) then
-                applyHighlight(inst, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
-                hookReadd(inst, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
-            end
-        end
-
-        hatch.DescendantAdded:Connect(function(inst)
-            if isHighlightable(inst) then
-                applyHighlight(inst, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
-                hookReadd(inst, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
-            end
-        end)
-    end
-
-    -- ===== ComputerTable (green) =====
-    local computerMapConnected = setmetatable({}, { __mode = "k" })
-
-    local function applyComputerHighlightTree(root)
-        if not root then return end
-
-        if isHighlightable(root) then
-            applyHighlight(root, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
-            hookReadd(root, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
-        end
-
-        for _, d in ipairs(root:GetDescendants()) do
-            if isHighlightable(d) then
-                applyHighlight(d, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
-                hookReadd(d, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
-            end
+        if hatch then
+            -- Highlight the hatch itself + rescan descendants
+            applyHighlight(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+            hookReadd(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+            bindDescendantsWithRescan(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
         end
     end
 
-    local function scanComputerTables(map)
-        if not map then return end
-        for _, inst in ipairs(map:GetDescendants()) do
-            if inst.Name == "ComputerTable" then
-                applyComputerHighlightTree(inst)
-            end
+    local function tryBindMapStuff()
+        local map = workspace:FindFirstChild("Map")
+        if map then
+            bindMap(map)
         end
     end
 
-    local function bindComputerTables(map)
-        if not map then return end
-
-        -- Always scan
-        scanComputerTables(map)
-
-        -- Only connect once per Map instance
-        if computerMapConnected[map] then return end
-        computerMapConnected[map] = true
-
-        map.DescendantAdded:Connect(function(inst)
-            if inst.Name == "ComputerTable" then
-                task.defer(function()
-                    applyComputerHighlightTree(inst)
-                end)
-            end
-        end)
+    -- =========================
+    -- Players: always highlight (no lobby checks)
+    -- =========================
+    local function getCharacterFromWorkspaceOrPlayer(player)
+        return workspace:FindFirstChild(player.Name) or player.Character
     end
 
-    -- ===== Players (blue, excludes you) =====
-    local function highlightCharacterModel(charModel)
-        if not charModel or bound[charModel] then return end
-        bound[charModel] = true
+    local function ensurePlayerHighlight(player)
+        if not player or player == LOCAL_PLAYER then return end
+        local char = getCharacterFromWorkspaceOrPlayer(player)
+        if not char then return end
 
-        applyHighlight(charModel, PLAYER_FILL_COLOR, PLAYER_OUTLINE_COLOR, PLAYER_FILL_TRANSPARENCY)
-        hookReadd(charModel, PLAYER_FILL_COLOR, PLAYER_OUTLINE_COLOR, PLAYER_FILL_TRANSPARENCY)
+        applyHighlight(char, PLAYER_FILL_COLOR, PLAYER_OUTLINE_COLOR, PLAYER_FILL_TRANSPARENCY)
+        hookReadd(char, PLAYER_FILL_COLOR, PLAYER_OUTLINE_COLOR, PLAYER_FILL_TRANSPARENCY)
     end
 
     local function bindPlayer(player)
         if not player or player == LOCAL_PLAYER then return end
 
-        local function tryApply()
-            local char = workspace:FindFirstChild(player.Name)
-            if not char and player.Character then char = player.Character end
-            if char then
-                highlightCharacterModel(char)
-            end
-        end
-
-        player.CharacterAdded:Connect(function(char)
+        player.CharacterAdded:Connect(function()
             task.defer(function()
-                highlightCharacterModel(char)
+                ensurePlayerHighlight(player)
             end)
         end)
 
-        tryApply()
+        task.defer(function()
+            ensurePlayerHighlight(player)
+        end)
     end
 
-    local function bindAllPlayers()
-        for _, p in ipairs(Players:GetPlayers()) do
-            bindPlayer(p)
-        end
+    -- Existing + new players
+    for _, p in ipairs(Players:GetPlayers()) do
+        bindPlayer(p)
     end
 
     Players.PlayerAdded:Connect(function(p)
@@ -11318,57 +11287,20 @@ do
         end)
     end)
 
-    local function refreshPlayerHighlights()
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LOCAL_PLAYER then
-                local char = workspace:FindFirstChild(p.Name) or p.Character
-                if char then
-                    highlightCharacterModel(char)
-                end
-            end
-        end
-    end
-
-    -- ===== Main bind loop (map reload safe) =====
-    local function tryBindMapStuff()
-        local map = workspace:FindFirstChild("Map")
-        if not map then return end
-
-        local eventFolder = map:FindFirstChild("EventObjects")
-        if eventFolder then
-            bindEventObjects(eventFolder)
-        end
-
-        bindHatch(map)
-        bindComputerTables(map)
-    end
-
-    -- Initial binds
-    tryBindMapStuff()
-    bindAllPlayers()
-    refreshPlayerHighlights()
-
-    -- Join-in-progress / streaming fix
-    task.spawn(function()
-        task.wait(2)
-        tryBindMapStuff()
-        bindAllPlayers()
-        refreshPlayerHighlights()
-    end)
-
-    -- Rebind if Map gets replaced
+    -- If character models appear later in Workspace OR Map gets replaced
     workspace.ChildAdded:Connect(function(child)
+        local p = Players:FindFirstChild(child.Name)
+        if p and p ~= LOCAL_PLAYER then
+            task.defer(function()
+                ensurePlayerHighlight(p)
+            end)
+        end
+
         if child.Name == "Map" then
             task.defer(tryBindMapStuff)
         end
     end)
 
-    -- Safety loop for late spawns / replacements
-    task.spawn(function()
-        while true do
-            tryBindMapStuff()
-            refreshPlayerHighlights()
-            task.wait(1)
-        end
-    end)
+    -- Kickoff
+    tryBindMapStuff()
 end
