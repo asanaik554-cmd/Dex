@@ -11112,201 +11112,98 @@ Main.Init()
 
 --for i,v in pairs(Main.MissingEnv) do print(i,v) end
 --// Services
-local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
-local LocalPlayer = Players.LocalPlayer
+local HIGHLIGHT_NAME = "DexEventHighlight"
 
---// Wait for Map & EventObjects
-local Map = Workspace:WaitForChild("Map")
-local EventFolder = Map:WaitForChild("EventObjects")
+-- ✅ Put the names of the objects you want highlighted here
+local ALLOWED_NAMES = {
+	["Gem"] = true,
+	["KeyCard"] = true,
+	["Objective"] = true,
+}
 
---====================================================
--- Small GUI Counter
---====================================================
-local gui = Instance.new("ScreenGui")
-gui.Name = "EventObjectsCounterGui"
-gui.ResetOnSpawn = false
-gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+-- Highlight style
+local FILL_COLOR = Color3.fromRGB(255, 0, 0)
+local OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
+local FILL_TRANSPARENCY = 0.45
 
-local frame = Instance.new("Frame")
-frame.Position = UDim2.fromScale(0.02, 0.08)
-frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-frame.BackgroundTransparency = 0.25
-frame.BorderSizePixel = 0
-frame.AutomaticSize = Enum.AutomaticSize.XY
-frame.Parent = gui
-
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 8)
-corner.Parent = frame
-
-local padding = Instance.new("UIPadding")
-padding.PaddingTop = UDim.new(0, 6)
-padding.PaddingBottom = UDim.new(0, 6)
-padding.PaddingLeft = UDim.new(0, 8)
-padding.PaddingRight = UDim.new(0, 8)
-padding.Parent = frame
-
-local label = Instance.new("TextLabel")
-label.AutomaticSize = Enum.AutomaticSize.XY
-label.BackgroundTransparency = 1
-label.Font = Enum.Font.GothamBold
-label.TextSize = 13
-label.TextColor3 = Color3.fromRGB(255, 255, 255)
-label.TextStrokeTransparency = 0.8
-label.TextXAlignment = Enum.TextXAlignment.Left
-label.Parent = frame
-
-local function updateCounter()
-	label.Text = "EventObjects: " .. tostring(#EventFolder:GetChildren())
+local function isHighlightable(inst)
+	return inst:IsA("Model") or inst:IsA("BasePart")
 end
-task.spawn(function()
-	local eventFolder = workspace:WaitForChild("EventObjects", 10)
-	if not eventFolder then return end
 
-	local function addHighlight(obj)
-		if obj:FindFirstChild("DexEventHighlight") then return end
-		if not (obj:IsA("Model") or obj:IsA("BasePart")) then return end
+local function shouldHighlight(inst)
+	return isHighlightable(inst) and ALLOWED_NAMES[inst.Name] == true
+end
 
-		local h = Instance.new("Highlight")
-		h.Name = "DexEventHighlight"
-		h.Adornee = obj
-		h.FillColor = Color3.fromRGB(255, 0, 0)
-		h.OutlineColor = Color3.fromRGB(255, 255, 255)
-		h.FillTransparency = 0.45
-		h.OutlineTransparency = 0
-		h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-		h.Parent = obj
-	end
+local function ensureHighlight(inst)
+	if not shouldHighlight(inst) then return end
 
-	-- Highlight existing objects
-	for _, obj in ipairs(eventFolder:GetChildren()) do
-		addHighlight(obj)
-	end
-
-	-- Highlight new objects
-	eventFolder.ChildAdded:Connect(function(obj)
-		task.wait()
-		addHighlight(obj)
-	end)
-end)
---====================================================
--- Highlight Utility
---====================================================
-local function createHighlight(parent, name, fillColor, fillTransparency)
-	if not parent then return end
-	if not (parent:IsA("Model") or parent:IsA("BasePart")) then return end
-
-	local existing = parent:FindFirstChild(name)
-	if existing and existing:IsA("Highlight") then
-		existing.Adornee = parent
-		existing.FillColor = fillColor
-		existing.OutlineColor = Color3.fromRGB(255, 255, 255)
-		existing.FillTransparency = fillTransparency
-		existing.OutlineTransparency = 0
-		existing.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-		return existing
-	elseif existing then
+	local h = inst:FindFirstChild(HIGHLIGHT_NAME)
+	if h and h:IsA("Highlight") then
+		-- Refresh / enforce style
+		h.Adornee = inst
+		h.FillColor = FILL_COLOR
+		h.OutlineColor = OUTLINE_COLOR
+		h.FillTransparency = FILL_TRANSPARENCY
 		return
 	end
 
-	local h = Instance.new("Highlight")
-	h.Name = name
-	h.Adornee = parent
-	h.FillColor = fillColor
-	h.OutlineColor = Color3.fromRGB(255, 255, 255)
-	h.FillTransparency = fillTransparency
-	h.OutlineTransparency = 0
-	h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	h.Parent = parent
-	return h
+	h = Instance.new("Highlight")
+	h.Name = HIGHLIGHT_NAME
+	h.Adornee = inst
+	h.FillColor = FILL_COLOR
+	h.OutlineColor = OUTLINE_COLOR
+	h.FillTransparency = FILL_TRANSPARENCY
+	h.Parent = inst
 end
 
-local function ensureHighlightStays(parent, highlightName, fillColor, fillTransparency)
-	if not parent then return end
-
-	createHighlight(parent, highlightName, fillColor, fillTransparency)
-
-	parent.ChildRemoved:Connect(function(child)
-		if child.Name == highlightName and parent.Parent then
-			createHighlight(parent, highlightName, fillColor, fillTransparency)
+local function watchForHighlightRemoval(inst)
+	-- If someone deletes the Highlight, re-add it
+	inst.ChildRemoved:Connect(function(child)
+		if child:IsA("Highlight") and child.Name == HIGHLIGHT_NAME then
+			task.defer(function()
+				if inst.Parent then
+					ensureHighlight(inst)
+				end
+			end)
 		end
 	end)
 end
 
---====================================================
--- RED: Event Objects (repopulate safe)
---====================================================
-local function handleEventObject(obj)
-	ensureHighlightStays(obj, "DexEventHighlight", Color3.fromRGB(255, 0, 0), 0.45)
-end
-
-local function rescanEventFolder()
-	for _, obj in ipairs(EventFolder:GetChildren()) do
-		handleEventObject(obj)
+local function setupEventObjectsFolder(eventFolder)
+	-- Existing children
+	for _, inst in ipairs(eventFolder:GetChildren()) do
+		ensureHighlight(inst)
+		watchForHighlightRemoval(inst)
 	end
-end
 
-rescanEventFolder()
-updateCounter()
-
-EventFolder.ChildAdded:Connect(function(obj)
-	handleEventObject(obj)
-	updateCounter()
-end)
-
-EventFolder.ChildRemoved:Connect(function()
-	task.defer(function()
-		rescanEventFolder()
-		updateCounter()
+	-- New children
+	eventFolder.ChildAdded:Connect(function(inst)
+		ensureHighlight(inst)
+		watchForHighlightRemoval(inst)
 	end)
-end)
+end
 
---====================================================
--- GREEN: Computers
---====================================================
-local function handleComputer(obj)
-	if obj.Name == "ComputerTable" then
-		ensureHighlightStays(obj, "DexComputerHighlight", Color3.fromRGB(0, 255, 0), 0.4)
+task.spawn(function()
+	while true do
+		-- Wait for Map
+		local map = workspace:FindFirstChild("Map")
+		while not map do
+			task.wait(0.5)
+			map = workspace:FindFirstChild("Map")
+		end
+
+		-- Wait for EventObjects
+		local eventFolder = map:FindFirstChild("EventObjects")
+		while not eventFolder do
+			task.wait(0.5)
+			eventFolder = map:FindFirstChild("EventObjects")
+		end
+
+		setupEventObjectsFolder(eventFolder)
+
+		-- If Map gets replaced/removed (new map loads), loop and re-bind
+		while map.Parent == workspace and eventFolder.Parent == map do
+			task.wait(1)
+		end
 	end
-end
-
---====================================================
--- YELLOW: Hatches
---====================================================
-local function handleHatch(obj)
-	if obj.Name == "Hatch" then
-		ensureHighlightStays(obj, "DexHatchHighlight", Color3.fromRGB(255, 255, 0), 0.4)
-	end
-end
-
--- Initial scan
-for _, obj in ipairs(Map:GetDescendants()) do
-	handleComputer(obj)
-	handleHatch(obj)
-end
-
--- Future spawns
-Map.DescendantAdded:Connect(function(obj)
-	handleComputer(obj)
-	handleHatch(obj)
 end)
-
---====================================================
--- BLUE: Other Players
---====================================================
-local function highlightCharacter(character)
-	ensureHighlightStays(character, "DexPlayerHighlight", Color3.fromRGB(0, 170, 255), 0.35)
-end
-
-local function onPlayerAdded(player)
-	if player == LocalPlayer then return end
-	if player.Character then highlightCharacter(player.Character) end
-	player.CharacterAdded:Connect(highlightCharacter)
-end
-
-for _, p in ipairs(Players:GetPlayers()) do
-	onPlayerAdded(p)
-end
-
-Players.PlayerAdded:Connect(onPlayerAdded)
