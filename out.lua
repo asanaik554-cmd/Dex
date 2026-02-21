@@ -11113,16 +11113,29 @@ Main.Init()
 --for i,v in pairs(Main.MissingEnv) do print(i,v) end
 --// Services
 do
+    local Players = game:GetService("Players")
+    local Teams = game:GetService("Teams")
+
+    local LOCAL_PLAYER = Players.LocalPlayer
     local HIGHLIGHT_NAME = "DexEventHighlight"
 
-    -- Colors
-    local EVENT_FILL_COLOR = Color3.fromRGB(255, 0, 0)      -- Red for EventObjects
+    -- Colors / styles
+    local EVENT_FILL_COLOR = Color3.fromRGB(255, 0, 0)      -- Red
     local EVENT_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
     local EVENT_FILL_TRANSPARENCY = 0.45
 
-    local HATCH_FILL_COLOR = Color3.fromRGB(255, 255, 0)    -- Yellow for Hatch
+    local HATCH_FILL_COLOR = Color3.fromRGB(255, 255, 0)    -- Yellow
     local HATCH_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
     local HATCH_FILL_TRANSPARENCY = 0.35
+
+    local PLAYER_FILL_COLOR = Color3.fromRGB(0, 170, 255)   -- Blue
+    local PLAYER_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
+    local PLAYER_FILL_TRANSPARENCY = 0.25
+
+    -- How to decide "in lobby":
+    -- If a Team named "Lobby" exists, only highlight players on that team.
+    -- If it doesn't exist, it will highlight all other players (excluding you).
+    local LOBBY_TEAM_NAME = "Lobby"
 
     local function isHighlightable(inst)
         return inst and (inst:IsA("Model") or inst:IsA("BasePart"))
@@ -11137,7 +11150,7 @@ do
             h.FillColor = fillColor
             h.OutlineColor = outlineColor
             h.FillTransparency = fillTransparency
-            return
+            return h
         end
 
         h = Instance.new("Highlight")
@@ -11147,6 +11160,7 @@ do
         h.OutlineColor = outlineColor
         h.FillTransparency = fillTransparency
         h.Parent = inst
+        return h
     end
 
     local function hookReadd(inst, fillColor, outlineColor, fillTransparency)
@@ -11162,8 +11176,10 @@ do
         end)
     end
 
+    -- Track what we've already bound to (weak keys so GC can clean up)
     local bound = setmetatable({}, { __mode = "k" })
 
+    -- ===== EventObjects (red) =====
     local function bindEventObjects(eventFolder)
         if not eventFolder or bound[eventFolder] then return end
         bound[eventFolder] = true
@@ -11183,17 +11199,17 @@ do
         end)
     end
 
+    -- ===== Hatch (yellow) =====
     local function bindHatch(map)
         if not map then return end
         local hatch = map:FindFirstChild("Hatch")
         if not hatch or bound[hatch] then return end
         bound[hatch] = true
 
-        -- Hatch itself
         applyHighlight(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
         hookReadd(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
 
-        -- If Hatch has parts inside, highlight them too (optional; remove if unwanted)
+        -- If Hatch contains parts/models, highlight them too
         for _, inst in ipairs(hatch:GetDescendants()) do
             if isHighlightable(inst) then
                 applyHighlight(inst, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
@@ -11209,7 +11225,80 @@ do
         end)
     end
 
-    local function tryBind()
+    -- ===== Players in Lobby (blue, excludes you) =====
+    local function isInLobby(player)
+        if not player then return false end
+        local lobbyTeam = Teams:FindFirstChild(LOBBY_TEAM_NAME)
+        if lobbyTeam then
+            return player.Team == lobbyTeam
+        end
+        -- Fallback: no Lobby team exists -> treat everyone as "in lobby"
+        return true
+    end
+
+    local function highlightCharacterModel(charModel)
+        if not charModel or bound[charModel] then return end
+        bound[charModel] = true
+
+        applyHighlight(charModel, PLAYER_FILL_COLOR, PLAYER_OUTLINE_COLOR, PLAYER_FILL_TRANSPARENCY)
+        hookReadd(charModel, PLAYER_FILL_COLOR, PLAYER_OUTLINE_COLOR, PLAYER_FILL_TRANSPARENCY)
+    end
+
+    local function bindPlayer(player)
+        if not player or player == LOCAL_PLAYER then return end
+
+        local function tryApply()
+            if not isInLobby(player) then return end
+
+            -- "Scan Workspace for those same names" (character models are usually named after player)
+            local char = workspace:FindFirstChild(player.Name)
+            if not char and player.Character then char = player.Character end
+            if char then
+                highlightCharacterModel(char)
+            end
+        end
+
+        -- On respawn
+        player.CharacterAdded:Connect(function(char)
+            task.defer(function()
+                if isInLobby(player) then
+                    highlightCharacterModel(char)
+                end
+            end)
+        end)
+
+        -- Initial
+        tryApply()
+    end
+
+    local function bindAllPlayers()
+        for _, p in ipairs(Players:GetPlayers()) do
+            bindPlayer(p)
+        end
+    end
+
+    Players.PlayerAdded:Connect(function(p)
+        task.defer(function()
+            bindPlayer(p)
+        end)
+    end)
+
+    -- If lobby team changes, re-check periodically (simple + reliable client-only)
+    local function refreshLobbyHighlights()
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LOCAL_PLAYER then
+                if isInLobby(p) then
+                    local char = workspace:FindFirstChild(p.Name) or p.Character
+                    if char then
+                        highlightCharacterModel(char)
+                    end
+                end
+            end
+        end
+    end
+
+    -- ===== Main bind loop (map reload safe) =====
+    local function tryBindMapStuff()
         local map = workspace:FindFirstChild("Map")
         if not map then return end
 
@@ -11221,17 +11310,23 @@ do
         bindHatch(map)
     end
 
-    tryBind()
+    -- Initial binds
+    tryBindMapStuff()
+    bindAllPlayers()
+    refreshLobbyHighlights()
 
+    -- Rebind if Map gets replaced
     workspace.ChildAdded:Connect(function(child)
         if child.Name == "Map" then
-            task.defer(tryBind)
+            task.defer(tryBindMapStuff)
         end
     end)
 
+    -- Safety loop for late spawns / replacements / lobby changes
     task.spawn(function()
         while true do
-            tryBind()
+            tryBindMapStuff()
+            refreshLobbyHighlights()
             task.wait(1)
         end
     end)
