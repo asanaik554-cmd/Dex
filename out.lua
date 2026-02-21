@@ -11132,11 +11132,6 @@ do
     local PLAYER_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
     local PLAYER_FILL_TRANSPARENCY = 0.25
 
-    -- NEW: ComputerTable (green)
-    local COMPUTER_FILL_COLOR = Color3.fromRGB(0, 255, 0)   -- Green
-    local COMPUTER_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
-    local COMPUTER_FILL_TRANSPARENCY = 0.25
-
     -- How to decide "in lobby":
     -- If a Team named "Lobby" exists, only highlight players on that team.
     -- If it doesn't exist, it will highlight all other players (excluding you).
@@ -11155,8 +11150,6 @@ do
             h.FillColor = fillColor
             h.OutlineColor = outlineColor
             h.FillTransparency = fillTransparency
-            -- If you want it ALWAYS visible on top, uncomment the next line:
-            -- h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
             return h
         end
 
@@ -11166,8 +11159,6 @@ do
         h.FillColor = fillColor
         h.OutlineColor = outlineColor
         h.FillTransparency = fillTransparency
-        -- If you want it ALWAYS visible on top, uncomment the next line:
-        -- h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
         h.Parent = inst
         return h
     end
@@ -11230,35 +11221,6 @@ do
             if isHighlightable(inst) then
                 applyHighlight(inst, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
                 hookReadd(inst, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
-            end
-        end)
-    end
-
-    -- ===== NEW: ComputerTable (green) =====
-    local computerBound = setmetatable({}, { __mode = "k" }) -- bind per-map once
-
-    local function highlightComputerTarget(inst)
-        if isHighlightable(inst) then
-            applyHighlight(inst, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
-            hookReadd(inst, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
-        end
-    end
-
-    local function bindComputerTables(map)
-        if not map or computerBound[map] then return end
-        computerBound[map] = true
-
-        -- Existing ComputerTables under Map
-        for _, inst in ipairs(map:GetDescendants()) do
-            if inst.Name == "ComputerTable" then
-                highlightComputerTarget(inst)
-            end
-        end
-
-        -- Future ComputerTables under Map
-        map.DescendantAdded:Connect(function(inst)
-            if inst.Name == "ComputerTable" then
-                highlightComputerTarget(inst)
             end
         end)
     end
@@ -11346,9 +11308,6 @@ do
         end
 
         bindHatch(map)
-
-        -- NEW: bind ComputerTables under Map
-        bindComputerTables(map)
     end
 
     -- Initial binds
