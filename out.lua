@@ -11115,14 +11115,7 @@ Main.Init()
 do
     local HIGHLIGHT_NAME = "DexEventHighlight"
 
-    -- ✅ Put ONLY the object names you want highlighted here:
-    local ALLOWED_NAMES = {
-        ["Gem"] = true,
-        ["KeyCard"] = true,
-        ["Objective"] = true,
-    }
-
-    -- Style
+    -- Highlight appearance
     local FILL_COLOR = Color3.fromRGB(255, 0, 0)
     local OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
     local FILL_TRANSPARENCY = 0.45
@@ -11131,16 +11124,12 @@ do
         return inst:IsA("Model") or inst:IsA("BasePart")
     end
 
-    local function shouldHighlight(inst)
-        return isHighlightable(inst) and ALLOWED_NAMES[inst.Name] == true
-    end
-
     local function ensureHighlight(inst)
-        if not shouldHighlight(inst) then return end
+        if not isHighlightable(inst) then return end
 
         local h = inst:FindFirstChild(HIGHLIGHT_NAME)
         if h and h:IsA("Highlight") then
-            -- enforce settings if it already exists
+            -- enforce style in case something changed it
             h.Adornee = inst
             h.FillColor = FILL_COLOR
             h.OutlineColor = OUTLINE_COLOR
@@ -11157,8 +11146,7 @@ do
         h.Parent = inst
     end
 
-    local function watchRemoval(inst)
-        -- If highlight gets deleted later, put it back
+    local function hookReadd(inst)
         inst.ChildRemoved:Connect(function(child)
             if child:IsA("Highlight") and child.Name == HIGHLIGHT_NAME then
                 task.defer(function()
@@ -11170,36 +11158,54 @@ do
         end)
     end
 
-    local function bindFolder(eventFolder)
-        -- existing
-        for _, inst in ipairs(eventFolder:GetChildren()) do
-            ensureHighlight(inst)
-            watchRemoval(inst)
+    local boundFolders = setmetatable({}, { __mode = "k" })
+
+    local function bindEventObjects(folder)
+        if boundFolders[folder] then return end
+        boundFolders[folder] = true
+
+        -- Existing descendants (nested stuff included)
+        for _, inst in ipairs(folder:GetDescendants()) do
+            if isHighlightable(inst) then
+                ensureHighlight(inst)
+                hookReadd(inst)
+            end
         end
 
-        -- new additions
-        eventFolder.ChildAdded:Connect(function(inst)
-            ensureHighlight(inst)
-            watchRemoval(inst)
+        -- New descendants
+        folder.DescendantAdded:Connect(function(inst)
+            if isHighlightable(inst) then
+                ensureHighlight(inst)
+                hookReadd(inst)
+            end
         end)
     end
 
+    local function tryBind()
+        local map = workspace:FindFirstChild("Map")
+        if not map then return end
+
+        local eventFolder = map:FindFirstChild("EventObjects")
+        if not eventFolder then return end
+
+        bindEventObjects(eventFolder)
+    end
+
+    -- Initial bind
+    tryBind()
+
+    -- If Map gets replaced, rebind
+    workspace.ChildAdded:Connect(function(child)
+        if child.Name == "Map" then
+            task.defer(tryBind)
+        end
+    end)
+
+    -- Safety loop for map reloads / late spawns
     task.spawn(function()
         while true do
-            -- wait for workspace.Map
-            local map = workspace:FindFirstChild("Map")
-            while not map do task.wait(0.5); map = workspace:FindFirstChild("Map") end
-
-            -- wait for workspace.Map.EventObjects
-            local eventFolder = map:FindFirstChild("EventObjects")
-            while not eventFolder do task.wait(0.5); eventFolder = map:FindFirstChild("EventObjects") end
-
-            bindFolder(eventFolder)
-
-            -- if map/eventFolder gets replaced on map reload, rebind
-            while map.Parent == workspace and eventFolder.Parent == map do
-                task.wait(1)
-            end
+            tryBind()
+            task.wait(1)
         end
     end)
 end
