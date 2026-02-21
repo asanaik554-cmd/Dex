@@ -11123,6 +11123,7 @@ do
     local PLAYER_HIGHLIGHT_NAME = "DexHighlight_Player"
     local EVENT_HIGHLIGHT_NAME  = "DexHighlight_Event"
     local HATCH_HIGHLIGHT_NAME  = "DexHighlight_Hatch"
+    local COMPUTER_HIGHLIGHT_NAME = "DexHighlight_ComputerTable"
 
     -- =========================
     -- Colors / styles
@@ -11135,6 +11136,10 @@ do
     local HATCH_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
     local HATCH_FILL_TRANSPARENCY = 0.35
 
+    local COMPUTER_FILL_COLOR = Color3.fromRGB(0, 255, 140) -- Green-ish (change if you want)
+    local COMPUTER_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
+    local COMPUTER_FILL_TRANSPARENCY = 0.35
+
     local PLAYER_FILL_COLOR = Color3.fromRGB(0, 170, 255)   -- Blue
     local PLAYER_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
     local PLAYER_FILL_TRANSPARENCY = 0.25
@@ -11142,6 +11147,7 @@ do
     -- Timers
     local EVENTOBJECTS_RESCAN_INTERVAL = 2.0
     local HATCH_RESCAN_INTERVAL = 2.0
+    local COMPUTER_RESCAN_INTERVAL = 2.0
     local HIGHLIGHT_ENFORCE_INTERVAL = 2.0
 
     -- =========================
@@ -11170,7 +11176,6 @@ do
         if adornee and adornee.Parent then
             h.Adornee = adornee
         end
-
         h.Enabled = true
         h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
         h.FillColor = fillColor
@@ -11221,7 +11226,7 @@ do
     end
 
     -- =========================
-    -- Map binds (original style)
+    -- Map binds
     -- =========================
     local function tryBindMapStuff()
         local map = workspace:FindFirstChild("Map")
@@ -11238,10 +11243,17 @@ do
             hookReadd(hatch, HATCH_HIGHLIGHT_NAME, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
             bindDescendants(hatch, HATCH_HIGHLIGHT_NAME, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
         end
+
+        local computer = map:FindFirstChild("ComputerTable")
+        if computer then
+            applyHighlight(computer, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+            hookReadd(computer, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+            bindDescendants(computer, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+        end
     end
 
     -- =========================
-    -- Players: always highlight
+    -- Players
     -- =========================
     local function getCharacterFromWorkspaceOrPlayer(player)
         return workspace:FindFirstChild(player.Name) or player.Character
@@ -11294,13 +11306,12 @@ do
     end)
 
     -- =========================
-    -- EventObjects rescan every 2 seconds
+    -- Rescans
     -- =========================
     task.spawn(function()
         while true do
             local map = workspace:FindFirstChild("Map")
             local eventFolder = map and map:FindFirstChild("EventObjects")
-
             if eventFolder then
                 for _, inst in ipairs(eventFolder:GetDescendants()) do
                     if isHighlightable(inst) then
@@ -11309,25 +11320,19 @@ do
                     end
                 end
             end
-
             task.wait(EVENTOBJECTS_RESCAN_INTERVAL)
         end
     end)
 
-    -- =========================
-    -- Hatch rescan every 2 seconds
-    -- =========================
     task.spawn(function()
         while true do
             local map = workspace:FindFirstChild("Map")
             local hatch = map and map:FindFirstChild("Hatch")
-
             if hatch then
                 if isHighlightable(hatch) then
                     applyHighlight(hatch, HATCH_HIGHLIGHT_NAME, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
                     hookReadd(hatch, HATCH_HIGHLIGHT_NAME, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
                 end
-
                 for _, inst in ipairs(hatch:GetDescendants()) do
                     if isHighlightable(inst) then
                         applyHighlight(inst, HATCH_HIGHLIGHT_NAME, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
@@ -11335,13 +11340,32 @@ do
                     end
                 end
             end
-
             task.wait(HATCH_RESCAN_INTERVAL)
         end
     end)
 
+    task.spawn(function()
+        while true do
+            local map = workspace:FindFirstChild("Map")
+            local computer = map and map:FindFirstChild("ComputerTable")
+            if computer then
+                if isHighlightable(computer) then
+                    applyHighlight(computer, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+                    hookReadd(computer, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+                end
+                for _, inst in ipairs(computer:GetDescendants()) do
+                    if isHighlightable(inst) then
+                        applyHighlight(inst, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+                        hookReadd(inst, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+                    end
+                end
+            end
+            task.wait(COMPUTER_RESCAN_INTERVAL)
+        end
+    end)
+
     -- =========================
-    -- Force highlights visible every 2 seconds
+    -- Force visibility
     -- =========================
     task.spawn(function()
         while true do
@@ -11355,11 +11379,12 @@ do
                             enforceHighlightVisible(inst, parent, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
                         elseif inst.Name == HATCH_HIGHLIGHT_NAME then
                             enforceHighlightVisible(inst, parent, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+                        elseif inst.Name == COMPUTER_HIGHLIGHT_NAME then
+                            enforceHighlightVisible(inst, parent, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
                         end
                     end
                 end
             end
-
             task.wait(HIGHLIGHT_ENFORCE_INTERVAL)
         end
     end)
