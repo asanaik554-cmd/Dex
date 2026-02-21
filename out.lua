@@ -11306,3 +11306,139 @@ workspace.ChildAdded:Connect(function(child)
 		attachToMap(child)
 	end
 end)
+-- =========================
+-- Highlight players who have BeastGem
+-- =========================
+
+local Players = game:GetService("Players")
+
+local BEAST_GEM_NAME = "BeastGem"
+local HIGHLIGHT_NAME = "DexHighlight_BeastGemPlayer"
+
+-- Blue highlight style
+local FILL_COLOR = Color3.fromRGB(0, 170, 255)
+local FILL_TRANSPARENCY = 0.35
+local OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
+local OUTLINE_TRANSPARENCY = 0
+
+local function ensureBlueHighlight(target)
+	if not target or not target.Parent then return end
+
+	local existing = target:FindFirstChild(HIGHLIGHT_NAME)
+	if existing and existing:IsA("Highlight") then
+		-- keep it correct
+		existing.Adornee = target
+		existing.FillColor = FILL_COLOR
+		existing.FillTransparency = FILL_TRANSPARENCY
+		existing.OutlineColor = OUTLINE_COLOR
+		existing.OutlineTransparency = OUTLINE_TRANSPARENCY
+		return
+	end
+
+	local h = Instance.new("Highlight")
+	h.Name = HIGHLIGHT_NAME
+	h.Adornee = target
+	h.FillColor = FILL_COLOR
+	h.FillTransparency = FILL_TRANSPARENCY
+	h.OutlineColor = OUTLINE_COLOR
+	h.OutlineTransparency = OUTLINE_TRANSPARENCY
+	h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop -- remove if you don't want through-walls
+	h.Parent = target
+end
+
+local function removeBlueHighlight(target)
+	if not target then return end
+	local h = target:FindFirstChild(HIGHLIGHT_NAME)
+	if h and h:IsA("Highlight") then
+		h:Destroy()
+	end
+end
+
+local function findWorkspaceTargetsByPlayerName(playerName)
+	-- Most games: Character model is directly under workspace and named playerName
+	local t = {}
+	local direct = workspace:FindFirstChild(playerName)
+	if direct then
+		table.insert(t, direct)
+	end
+	return t
+end
+
+local function playerHasBeastGem(player)
+	local char = player.Character
+	if not char then return false end
+	return char:FindFirstChild(BEAST_GEM_NAME) ~= nil
+end
+
+local function refreshPlayerHighlight(player)
+	local targets = findWorkspaceTargetsByPlayerName(player.Name)
+	local hasGem = playerHasBeastGem(player)
+
+	for _, target in ipairs(targets) do
+		if hasGem then
+			ensureBlueHighlight(target)
+		else
+			removeBlueHighlight(target)
+		end
+	end
+end
+
+local function watchPlayer(player)
+	-- Refresh for whatever exists now
+	refreshPlayerHighlight(player)
+
+	-- Handle respawn
+	player.CharacterAdded:Connect(function(char)
+		-- Wait a moment for children to populate
+		task.wait(0.1)
+
+		-- Initial refresh after spawn
+		refreshPlayerHighlight(player)
+
+		-- Watch BeastGem appear/disappear on the character
+		char.ChildAdded:Connect(function(child)
+			if child.Name == BEAST_GEM_NAME then
+				refreshPlayerHighlight(player)
+			end
+		end)
+		char.ChildRemoved:Connect(function(child)
+			if child.Name == BEAST_GEM_NAME then
+				refreshPlayerHighlight(player)
+			end
+		end)
+	end)
+
+	-- If character exists already, attach gem watchers too
+	if player.Character then
+		local char = player.Character
+		char.ChildAdded:Connect(function(child)
+			if child.Name == BEAST_GEM_NAME then
+				refreshPlayerHighlight(player)
+			end
+		end)
+		char.ChildRemoved:Connect(function(child)
+			if child.Name == BEAST_GEM_NAME then
+				refreshPlayerHighlight(player)
+			end
+		end)
+	end
+end
+
+-- If a workspace object named after a player appears later, refresh that player
+workspace.ChildAdded:Connect(function(child)
+	local p = Players:FindFirstChild(child.Name)
+	if p then
+		task.wait(0.05)
+		refreshPlayerHighlight(p)
+	end
+end)
+
+-- Existing players
+for _, p in ipairs(Players:GetPlayers()) do
+	watchPlayer(p)
+end
+
+-- New players
+Players.PlayerAdded:Connect(function(p)
+	watchPlayer(p)
+end)
