@@ -11236,3 +11236,73 @@ do
         end
     end)
 end
+-- =========================
+-- ComputerTable Highlight
+-- =========================
+
+local HIGHLIGHT_NAME = "DexHighlight_ComputerTable"
+
+local FILL_COLOR = Color3.fromRGB(0, 255, 0) -- Green
+local FILL_TRANSPARENCY = 0.35
+local OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
+local OUTLINE_TRANSPARENCY = 0
+
+local function ensureHighlight(target)
+	if not target or not target.Parent then return end
+	if target.Name ~= "ComputerTable" then return end
+
+	-- Prevent duplicate highlights
+	if target:FindFirstChild(HIGHLIGHT_NAME) then
+		return
+	end
+
+	local h = Instance.new("Highlight")
+	h.Name = HIGHLIGHT_NAME
+	h.Adornee = target
+	h.FillColor = FILL_COLOR
+	h.FillTransparency = FILL_TRANSPARENCY
+	h.OutlineColor = OUTLINE_COLOR
+	h.OutlineTransparency = OUTLINE_TRANSPARENCY
+	h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop -- remove if you don't want wallhack-style highlighting
+	h.Parent = target
+end
+
+local function scanMap(map)
+	for _, inst in ipairs(map:GetDescendants()) do
+		if inst.Name == "ComputerTable" then
+			ensureHighlight(inst)
+		end
+	end
+end
+
+local function attachToMap(map)
+	-- Highlight existing ComputerTables
+	scanMap(map)
+
+	-- Highlight newly added ones
+	map.DescendantAdded:Connect(function(inst)
+		if inst.Name == "ComputerTable" then
+			ensureHighlight(inst)
+		end
+	end)
+end
+
+-- Watch for Map existing / respawning
+task.spawn(function()
+	while true do
+		local map = workspace:FindFirstChild("Map")
+		if map then
+			attachToMap(map)
+			break
+		end
+		task.wait(0.25)
+	end
+end)
+
+-- If Map gets deleted and re-added, reattach
+workspace.ChildAdded:Connect(function(child)
+	if child.Name == "Map" then
+		task.wait(0.1)
+		attachToMap(child)
+	end
+end)
