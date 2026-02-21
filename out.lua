@@ -11120,9 +11120,9 @@ do
     -- =========================
     -- Highlight Names
     -- =========================
-    local PLAYER_HIGHLIGHT_NAME = "DexHighlight_Player"
-    local EVENT_HIGHLIGHT_NAME  = "DexHighlight_Event"
-    local HATCH_HIGHLIGHT_NAME  = "DexHighlight_Hatch"
+    local PLAYER_HIGHLIGHT_NAME   = "DexHighlight_Player"
+    local EVENT_HIGHLIGHT_NAME    = "DexHighlight_Event"
+    local HATCH_HIGHLIGHT_NAME    = "DexHighlight_Hatch"
     local COMPUTER_HIGHLIGHT_NAME = "DexHighlight_ComputerTable"
 
     -- =========================
@@ -11136,7 +11136,8 @@ do
     local HATCH_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
     local HATCH_FILL_TRANSPARENCY = 0.35
 
-    local COMPUTER_FILL_COLOR = Color3.fromRGB(0, 255, 140) -- Green-ish (change if you want)
+    -- ComputerTable (GREEN)
+    local COMPUTER_FILL_COLOR = Color3.fromRGB(0, 255, 0)
     local COMPUTER_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
     local COMPUTER_FILL_TRANSPARENCY = 0.35
 
@@ -11244,11 +11245,15 @@ do
             bindDescendants(hatch, HATCH_HIGHLIGHT_NAME, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
         end
 
-        local computer = map:FindFirstChild("ComputerTable")
-        if computer then
-            applyHighlight(computer, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
-            hookReadd(computer, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
-            bindDescendants(computer, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+        -- ComputerTable: find ALL by name under Map (not just one)
+        for _, obj in ipairs(map:GetDescendants()) do
+            if obj.Name == "ComputerTable" then
+                if isHighlightable(obj) then
+                    applyHighlight(obj, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+                    hookReadd(obj, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+                end
+                bindDescendants(obj, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+            end
         end
     end
 
@@ -11306,12 +11311,13 @@ do
     end)
 
     -- =========================
-    -- Rescans
+    -- EventObjects rescan every 2 seconds
     -- =========================
     task.spawn(function()
         while true do
             local map = workspace:FindFirstChild("Map")
             local eventFolder = map and map:FindFirstChild("EventObjects")
+
             if eventFolder then
                 for _, inst in ipairs(eventFolder:GetDescendants()) do
                     if isHighlightable(inst) then
@@ -11320,19 +11326,25 @@ do
                     end
                 end
             end
+
             task.wait(EVENTOBJECTS_RESCAN_INTERVAL)
         end
     end)
 
+    -- =========================
+    -- Hatch rescan every 2 seconds
+    -- =========================
     task.spawn(function()
         while true do
             local map = workspace:FindFirstChild("Map")
             local hatch = map and map:FindFirstChild("Hatch")
+
             if hatch then
                 if isHighlightable(hatch) then
                     applyHighlight(hatch, HATCH_HIGHLIGHT_NAME, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
                     hookReadd(hatch, HATCH_HIGHLIGHT_NAME, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
                 end
+
                 for _, inst in ipairs(hatch:GetDescendants()) do
                     if isHighlightable(inst) then
                         applyHighlight(inst, HATCH_HIGHLIGHT_NAME, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
@@ -11340,26 +11352,35 @@ do
                     end
                 end
             end
+
             task.wait(HATCH_RESCAN_INTERVAL)
         end
     end)
 
+    -- =========================
+    -- ComputerTable rescan every 2 seconds (ALL by name)
+    -- =========================
     task.spawn(function()
         while true do
             local map = workspace:FindFirstChild("Map")
-            local computer = map and map:FindFirstChild("ComputerTable")
-            if computer then
-                if isHighlightable(computer) then
-                    applyHighlight(computer, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
-                    hookReadd(computer, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
-                end
-                for _, inst in ipairs(computer:GetDescendants()) do
-                    if isHighlightable(inst) then
-                        applyHighlight(inst, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
-                        hookReadd(inst, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+            if map then
+                for _, obj in ipairs(map:GetDescendants()) do
+                    if obj.Name == "ComputerTable" then
+                        if isHighlightable(obj) then
+                            applyHighlight(obj, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+                            hookReadd(obj, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+                        end
+
+                        for _, inst in ipairs(obj:GetDescendants()) do
+                            if isHighlightable(inst) then
+                                applyHighlight(inst, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+                                hookReadd(inst, COMPUTER_HIGHLIGHT_NAME, COMPUTER_FILL_COLOR, COMPUTER_OUTLINE_COLOR, COMPUTER_FILL_TRANSPARENCY)
+                            end
+                        end
                     end
                 end
             end
+
             task.wait(COMPUTER_RESCAN_INTERVAL)
         end
     end)
