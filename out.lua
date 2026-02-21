@@ -11133,13 +11133,13 @@ do
     local PLAYER_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
     local PLAYER_FILL_TRANSPARENCY = 0.25
 
-    -- Rescan timing (EventObjects only)
+    -- Timers
     local EVENTOBJECTS_RESCAN_INTERVAL = 2.0
+    local HIGHLIGHT_ENFORCE_INTERVAL = 2.0
 
     -- =========================
     -- Internals
     -- =========================
-    local bound = setmetatable({}, { __mode = "k" })
     local readdHooked = setmetatable({}, { __mode = "k" })
     local folderBound = setmetatable({}, { __mode = "k" })
 
@@ -11158,13 +11158,28 @@ do
         return h
     end
 
-    local function applyHighlight(inst, fillColor, outlineColor, fillTransparency)
-        if not isHighlightable(inst) then return end
-        local h = getOrCreateHighlight(inst)
-        h.Adornee = inst
+    -- Force the highlight to be visible (and stay visible)
+    local function enforceHighlightVisible(h, adornee, fillColor, outlineColor, fillTransparency)
+        if not h or not h:IsA("Highlight") then return end
+        if adornee and adornee.Parent then
+            h.Adornee = adornee
+        end
+
+        h.Enabled = true
+        h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+
         h.FillColor = fillColor
         h.OutlineColor = outlineColor
         h.FillTransparency = fillTransparency
+
+        -- Some games mess with OutlineTransparency; keep outline visible
+        h.OutlineTransparency = 0
+    end
+
+    local function applyHighlight(inst, fillColor, outlineColor, fillTransparency)
+        if not isHighlightable(inst) then return end
+        local h = getOrCreateHighlight(inst)
+        enforceHighlightVisible(h, inst, fillColor, outlineColor, fillTransparency)
         return h
     end
 
@@ -11218,8 +11233,6 @@ do
         if hatch then
             applyHighlight(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
             hookReadd(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
-
-            -- Highlight anything inside Hatch too
             bindDescendants(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
         end
     end
@@ -11278,7 +11291,7 @@ do
     end)
 
     -- =========================
-    -- EventObjects rescan every 2 seconds (ONLY change you asked for)
+    -- EventObjects rescan every 2 seconds
     -- =========================
     task.spawn(function()
         while true do
@@ -11286,7 +11299,6 @@ do
             local eventFolder = map and map:FindFirstChild("EventObjects")
 
             if eventFolder then
-                -- Re-apply highlight to everything (guarantees nothing is missed)
                 for _, inst in ipairs(eventFolder:GetDescendants()) do
                     if isHighlightable(inst) then
                         applyHighlight(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
@@ -11296,6 +11308,46 @@ do
             end
 
             task.wait(EVENTOBJECTS_RESCAN_INTERVAL)
+        end
+    end)
+
+    -- =========================
+    -- Force highlights visible every 2 seconds
+    -- =========================
+    task.spawn(function()
+        while true do
+            -- Scan workspace for our highlights and force them visible.
+            -- (We use GetDescendants to be robust even if highlights are moved around.)
+            for _, inst in ipairs(workspace:GetDescendants()) do
+                if inst:IsA("Highlight") and inst.Name == HIGHLIGHT_NAME then
+                    local parent = inst.Parent
+                    if parent and isHighlightable(parent) then
+                        -- Decide which style to enforce based on where it lives
+                        local map = workspace:FindFirstChild("Map")
+                        local eventFolder = map and map:FindFirstChild("EventObjects")
+                        local hatch = map and map:FindFirstChild("Hatch")
+
+                        local fillColor, outlineColor, fillTrans
+
+                        if hatch and (parent == hatch or parent:IsDescendantOf(hatch)) then
+                            fillColor, outlineColor, fillTrans = HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY
+                        elseif eventFolder and parent:IsDescendantOf(eventFolder) then
+                            fillColor, outlineColor, fillTrans = EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY
+                        else
+                            -- Default to player style
+                            fillColor, outlineColor, fillTrans = PLAYER_FILL_COLOR, PLAYER_OUTLINE_COLOR, PLAYER_FILL_TRANSPARENCY
+                        end
+
+                        enforceHighlightVisible(inst, parent, fillColor, outlineColor, fillTrans)
+                    else
+                        -- If it has no valid parent/adornee anymore, clean it up
+                        -- (prevents orphan highlights from building up)
+                        inst:Destroy()
+                    end
+                end
+            end
+
+            task.wait(HIGHLIGHT_ENFORCE_INTERVAL)
         end
     end)
 
