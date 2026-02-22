@@ -11223,6 +11223,53 @@ do
 
     tryBind()
 
+    -- =========================
+    -- Manual rehighlight button (EventObjects)
+    -- =========================
+
+    local Players = game:GetService("Players")
+    local localPlayer = Players.LocalPlayer
+
+    local function forceRehighlightEventObjects()
+        local map = workspace:FindFirstChild("Map")
+        if not map then return end
+
+        local eventFolder = map:FindFirstChild("EventObjects")
+        if not eventFolder then return end
+
+        -- Ensure bind is set up (DescendantAdded hooks etc.)
+        bindEventObjects(eventFolder)
+
+        -- Force apply highlights to everything under EventObjects right now
+        for _, inst in ipairs(eventFolder:GetDescendants()) do
+            if isHighlightable(inst) then
+                applyHighlight(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
+                hookReadd(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
+            end
+        end
+    end
+
+    task.defer(function()
+        local playerGui = localPlayer and localPlayer:WaitForChild("PlayerGui", 5)
+        if not playerGui then return end
+
+        local gui = Instance.new("ScreenGui")
+        gui.Name = "Dex_EventObjects_UI"
+        gui.ResetOnSpawn = false
+        gui.Parent = playerGui
+
+        local btn = Instance.new("TextButton")
+        btn.Name = "RehighlightEventObjects"
+        btn.Size = UDim2.new(0, 220, 0, 40)
+        btn.Position = UDim2.new(0, 20, 0, 120)
+        btn.Text = "Rehighlight EventObjects"
+        btn.Parent = gui
+
+        btn.MouseButton1Click:Connect(function()
+            forceRehighlightEventObjects()
+        end)
+    end)
+
     workspace.ChildAdded:Connect(function(child)
         if child.Name == "Map" then
             task.defer(tryBind)
