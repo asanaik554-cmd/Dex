@@ -11124,6 +11124,8 @@ do
     local HATCH_OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
     local HATCH_FILL_TRANSPARENCY = 0.35
 
+    local EVENT_HIGHLIGHTS_ENABLED = true
+
     local function isHighlightable(inst)
         return inst and (inst:IsA("Model") or inst:IsA("BasePart"))
     end
@@ -11149,12 +11151,15 @@ do
         h.Parent = inst
     end
 
-    local function hookReadd(inst, fillColor, outlineColor, fillTransparency)
+    local function hookReadd(inst, fillColor, outlineColor, fillTransparency, isEventObject)
         if not isHighlightable(inst) then return end
         inst.ChildRemoved:Connect(function(child)
             if child:IsA("Highlight") and child.Name == HIGHLIGHT_NAME then
                 task.defer(function()
                     if inst.Parent then
+                        if isEventObject and not EVENT_HIGHLIGHTS_ENABLED then
+                            return
+                        end
                         applyHighlight(inst, fillColor, outlineColor, fillTransparency)
                     end
                 end)
@@ -11170,15 +11175,19 @@ do
 
         for _, inst in ipairs(eventFolder:GetDescendants()) do
             if isHighlightable(inst) then
-                applyHighlight(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
-                hookReadd(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
+                if EVENT_HIGHLIGHTS_ENABLED then
+                    applyHighlight(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
+                end
+                hookReadd(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY, true)
             end
         end
 
         eventFolder.DescendantAdded:Connect(function(inst)
             if isHighlightable(inst) then
-                applyHighlight(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
-                hookReadd(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
+                if EVENT_HIGHLIGHTS_ENABLED then
+                    applyHighlight(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
+                end
+                hookReadd(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY, true)
             end
         end)
     end
@@ -11191,20 +11200,20 @@ do
 
         -- Hatch itself
         applyHighlight(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
-        hookReadd(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+        hookReadd(hatch, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY, false)
 
         -- If Hatch has parts inside, highlight them too (optional; remove if unwanted)
         for _, inst in ipairs(hatch:GetDescendants()) do
             if isHighlightable(inst) then
                 applyHighlight(inst, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
-                hookReadd(inst, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+                hookReadd(inst, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY, false)
             end
         end
 
         hatch.DescendantAdded:Connect(function(inst)
             if isHighlightable(inst) then
                 applyHighlight(inst, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
-                hookReadd(inst, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY)
+                hookReadd(inst, HATCH_FILL_COLOR, HATCH_OUTLINE_COLOR, HATCH_FILL_TRANSPARENCY, false)
             end
         end)
     end
@@ -11224,7 +11233,7 @@ do
     tryBind()
 
     -- =========================
-    -- Manual rehighlight button (EventObjects)
+    -- Manual buttons (EventObjects)
     -- =========================
 
     local Players = game:GetService("Players")
@@ -11237,6 +11246,8 @@ do
         local eventFolder = map:FindFirstChild("EventObjects")
         if not eventFolder then return end
 
+        EVENT_HIGHLIGHTS_ENABLED = true
+
         -- Ensure bind is set up (DescendantAdded hooks etc.)
         bindEventObjects(eventFolder)
 
@@ -11244,7 +11255,24 @@ do
         for _, inst in ipairs(eventFolder:GetDescendants()) do
             if isHighlightable(inst) then
                 applyHighlight(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
-                hookReadd(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY)
+                hookReadd(inst, EVENT_FILL_COLOR, EVENT_OUTLINE_COLOR, EVENT_FILL_TRANSPARENCY, true)
+            end
+        end
+    end
+
+    local function clearEventObjectsHighlights()
+        local map = workspace:FindFirstChild("Map")
+        if not map then return end
+
+        local eventFolder = map:FindFirstChild("EventObjects")
+        if not eventFolder then return end
+
+        EVENT_HIGHLIGHTS_ENABLED = false
+
+        for _, inst in ipairs(eventFolder:GetDescendants()) do
+            local h = inst:FindFirstChild(HIGHLIGHT_NAME)
+            if h and h:IsA("Highlight") then
+                h:Destroy()
             end
         end
     end
@@ -11258,15 +11286,26 @@ do
         gui.ResetOnSpawn = false
         gui.Parent = playerGui
 
-        local btn = Instance.new("TextButton")
-        btn.Name = "RehighlightEventObjects"
-        btn.Size = UDim2.new(0, 220, 0, 40)
-        btn.Position = UDim2.new(0, 20, 0, 120)
-        btn.Text = "Rehighlight EventObjects"
-        btn.Parent = gui
+        local btn1 = Instance.new("TextButton")
+        btn1.Name = "RehighlightEventObjects"
+        btn1.Size = UDim2.new(0, 220, 0, 40)
+        btn1.Position = UDim2.new(0, 20, 0, 120)
+        btn1.Text = "Rehighlight EventObjects"
+        btn1.Parent = gui
 
-        btn.MouseButton1Click:Connect(function()
+        local btn2 = Instance.new("TextButton")
+        btn2.Name = "ClearEventObjectsHighlights"
+        btn2.Size = UDim2.new(0, 220, 0, 40)
+        btn2.Position = UDim2.new(0, 20, 0, 170)
+        btn2.Text = "Clear EventObjects Highlights"
+        btn2.Parent = gui
+
+        btn1.MouseButton1Click:Connect(function()
             forceRehighlightEventObjects()
+        end)
+
+        btn2.MouseButton1Click:Connect(function()
+            clearEventObjectsHighlights()
         end)
     end)
 
